@@ -23,13 +23,6 @@ Quick Presets: Use the lightning bolt menu to instantly add 15m, 30m, or custom-
 
 Recurring Alarms: Toggle the ↺ icon on any shortcut to make it automatically reset once finished—perfect for party celebrations or resource production cycles.
 
-Installation
-Download or clone this repository.
-
-Open your browser and navigate to: about:debugging#/runtime/this-firefox
-
-Click Load Temporary Add-on and select any file in the folder, refresh any travian tab you have open and boom done.
-
 How to Use
 1. The Construction Dashboard
 As soon as you start a building, Watchman Pro detects it. The timer will appear in the floating widget on the right.
