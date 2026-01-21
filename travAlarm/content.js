@@ -1,6 +1,6 @@
 /**
  * TRAVIAN WATCHMAN PRO - CONTENT SCRIPT
- * Version: 1.9 (Stable / Descriptors Optimized / Hero Server Lock)
+ * Version: 3.15 (Fix: Switched Alarm Editing to Prompts)
  */
 
 // ==========================================
@@ -10,34 +10,140 @@ let lastNamesKey = "";
 let silencedAlarms = new Set();
 let localTracked = new Set();
 let currentAlarms = [];
+let suppressedAttacks = new Set(); 
 const uiRefs = new Map();
 
-// Throttle Flag (Jitter Fix)
+// Throttle Flag
 let isScanning = false;
 
-// Server Tag - Essential for multi-server isolation
-const serverTag = `[${window.location.hostname.split('.')[0]}]`;
+// Debounce counter for clearing attacks
+let noAttackConsecutiveScans = 0; 
+
+// ==========================================
+// SERVER TAG GENERATION
+// ==========================================
+const generateServerTag = () => {
+    let host = window.location.hostname;
+    host = host.replace(/^www\./, '').replace(/\.travian\.[a-z]+$/, '');
+
+    const regionShorteners = {
+        'europe': 'eur',
+        'america': 'ame',
+        'arabia': 'ara',
+        'international': 'int',
+        'hispano': 'esp',
+        'nordic': 'nor',
+        'balkans': 'blk',
+        'asia': 'asi',
+        'com': '' 
+    };
+
+    const parts = host.split('.').map(part => {
+        return regionShorteners[part] || part;
+    }).filter(p => p !== ''); 
+
+    return `[${parts.join('.')}]`;
+};
+
+const serverTag = generateServerTag();
 
 const DEFAULT_SHORTCUTS = [
     { label: "15m", minutes: 15, isRecurring: false },
     { label: "30m", minutes: 30, isRecurring: false }
 ];
 
-// Helper: Cleans text strings
 const cleanText = (str) => str.replace(/\s+/g, ' ').trim();
 const cleanCoords = (str) => str.replace(/[^\d|−-]/g, '').replace('−', '-');
+
+// ==========================================
+// HELPERS
+// ==========================================
+
+/**
+ * Parses user input for duration.
+ * Supports: 
+ * - "1:30:00" -> 1h 30m
+ * - "13:30" or "13.30" -> 13m 30s
+ * - "15" -> 15m
+ */
+function parseSmartDuration(input) {
+    if (!input) return null;
+    let str = input.toString().trim();
+    
+    if (str.includes(':') || str.includes('.')) {
+        // Handle H:M:S or M:S
+        let parts = str.replace('.', ':').split(':').map(n => parseInt(n, 10) || 0);
+        
+        if (parts.length === 3) {
+            // H:M:S
+            return (parts[0] * 3600 * 1000) + (parts[1] * 60 * 1000) + (parts[2] * 1000);
+        }
+        if (parts.length === 2) {
+            // M:S
+            return (parts[0] * 60 * 1000) + (parts[1] * 1000);
+        }
+    }
+    
+    // Fallback: Just a number = Minutes
+    const num = parseFloat(str);
+    if (!isNaN(num)) return num * 60 * 1000;
+    
+    return null;
+}
+
+function formatDurationForPrompt(ms) {
+    // If negative (overdue), just show 0
+    if (ms < 0) return "0";
+    
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    
+    if (h > 0) {
+        return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+    if (s === 0) return `${m}`;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function getStyledDisplayName(rawName, isRecurring) {
+    let cleanName = rawName.replace(/\[[^\]]+\]/g, '').trim();
+    cleanName = cleanName.replace(/\s{2,}/g, ' ');
+
+    let displayName = cleanName;
+
+    if (cleanName.includes('|')) {
+        const idx = cleanName.indexOf('|');
+        const boldPart = cleanName.substring(0, idx);
+        const greyPart = cleanName.substring(idx + 1);
+        displayName = `${boldPart.trim()}<span style="color: #9ca3af !important; font-weight: normal; margin-left: 5px;">${greyPart.trim()}</span>`;
+    } else {
+        const parts = cleanName.match(/^(.*?)(\s\(.*?\))(\s#\d+)?$/);
+        if (parts) {
+            displayName = `${parts[1]}<span style="color: #9ca3af !important; font-weight: normal;">${parts[2]}</span>${parts[3] || ""}`;
+        }
+    }
+
+    displayName = displayName.replace(serverTag, '').trim(); 
+    displayName = displayName.replace('⚠️', '<span class="danger-icon">⚠️</span>');
+    
+    if (isRecurring) { 
+        displayName += `<span class="recurring-indicator" title="Recurring Alarm">↺</span>`; 
+    }
+    
+    return displayName;
+}
 
 // ==========================================
 // CORE LOGIC: SCANNERS
 // ==========================================
 
 function scan() {
-    // 1. Throttling: Prevent execution more than once every 500ms
     if (isScanning) return;
     isScanning = true;
-    setTimeout(() => { isScanning = false; }, 500);
+    setTimeout(() => { isScanning = false; }, 50);
 
-    // 2. Map Awareness: Hide widget on fullscreen map
     if (typeof timerWidget !== 'undefined' && timerWidget) {
         const isMap = window.location.pathname.includes('karte.php');
         const isFull = new URLSearchParams(window.location.search).get('fullscreen') === '1';
@@ -45,13 +151,11 @@ function scan() {
     }
 
     try {
-        const villageMap = scanVillages(); // Scans sidebar for coords -> name mapping
+        const villageMap = scanVillages(); 
         const activeVillage = getActiveVillageName();
         const found = [];
 
-        // 3. Scan Buildings with Safe-Fail Logic
         let matchedBuildingIds = null; 
-        
         try {
             const scanResult = scanBuildings(activeVillage);
             if (scanResult !== null) {
@@ -60,7 +164,6 @@ function scan() {
             }
         } catch (e) { console.error("Building Scan Error:", e); }
 
-        // 4. Scan Hero (Optimized for one alarm per server)
         try {
             const heroStatuses = scanHero(activeVillage, villageMap);
             if (heroStatuses && heroStatuses.length > 0) {
@@ -68,18 +171,20 @@ function scan() {
             }
         } catch (e) { console.error("Hero Scan Error:", e); }
 
-        // 5. Scan Incoming Attacks
         try {
             const attacks = scanAttacks(activeVillage);
             if (attacks.length > 0) found.push(...attacks);
         } catch (e) { console.error("Attack Scan Error:", e); }
 
-        // 6. Conditional Cleanup: Abort if list was missing to prevent flicker
+        try {
+            const sidebarAttacks = scanSidebarAttacks();
+            if (sidebarAttacks.length > 0) found.push(...sidebarAttacks);
+        } catch (e) { console.error("Sidebar Scan Error:", e); }
+
         if (matchedBuildingIds !== null) {
             handleQueueCleanup(matchedBuildingIds, activeVillage);
         }
 
-        // 7. Update Backend
         if (found.length > 0) {
             browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: found });
         }
@@ -91,77 +196,43 @@ function scan() {
     }
 }
 
-/**
- * Scans Hero Status and cross-references coordinates with the village list.
- * Effectively enforces a "One Hero Alarm Per Server" rule.
- */
-function scanHero(activeVillage, villageMap) {
-    const heroTimers = document.querySelectorAll('.heroStatus .timer, #sidebarBoxHero .timer, .tippy-content .timer, #travian_tooltip .timer');
-    if (!heroTimers || heroTimers.length === 0) return [];
+function scanSidebarAttacks() {
+    const listEntries = document.querySelectorAll('.villageList .listEntry');
+    if (!listEntries || listEntries.length === 0) return [];
 
-    const foundHeroes = [];
+    let isUnderAttack = false;
 
-    heroTimers.forEach(heroTimer => {
-        const parent = heroTimer.closest('.heroStatus, #sidebarBoxHero, .tippy-content, #travian_tooltip');
-        if (!parent) return;
-
-        const rawStatus = parent.querySelector('.text')?.innerText || "";
-        const rawStatusLower = rawStatus.toLowerCase();
-        
-        // User requested -2000ms offset for Hero alarms
-        const delayValue = ((heroTimer.getAttribute('value') | 0) * 1000) - 2000;
-        const scheduledTime = Date.now() + delayValue;
-        
-        if (delayValue <= 0) return;
-
-        // Cross-reference tooltip coordinates with Sidebar Village List
-        const coordMatch = rawStatus.match(/\([−-]?\d+[|/][−-]?\d+\)/);
-        let matchedVillageName = "";
-        if (coordMatch) {
-            const key = cleanCoords(coordMatch[0]);
-            matchedVillageName = villageMap[key];
+    for (const entry of listEntries) {
+        if (entry.classList.contains('attack')) {
+            isUnderAttack = true;
+            break; 
         }
+    }
 
-        // Identify the Hero's origin village from the tooltip link
-        const homeLink = parent.querySelector('a[href*="id="]');
-        let originName = homeLink ? cleanText(homeLink.innerText.split('\n')[0]) : (activeVillage || "Home Village");
+    const alarmName = `⚠️ INCOMING ATTACKS! ${serverTag}`;
 
-        let actionLabel = "";
-        let targetName = "";
-
-        if (rawStatusLower.includes("oasis")) {
-            actionLabel = "Going to Oasis";
-            targetName = originName; // Display source village
-        } else if (rawStatusLower.includes("adventure")) {
-            actionLabel = "Going to Adventure";
-            targetName = originName; // Display source village
-        } else if (rawStatusLower.includes("reinforce")) {
-            actionLabel = "Reinforcing";
-            targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName);
-        } else {
-            actionLabel = "Returning to";
-            targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName);
+    if (isUnderAttack) {
+        noAttackConsecutiveScans = 0;
+        if (suppressedAttacks.has(alarmName)) return []; 
+        const exists = currentAlarms.some(a => a.name === alarmName);
+        if (!exists) {
+            return [{
+                name: alarmName,
+                delay: 1000, 
+                customType: 'attack'
+            }];
         }
-
-        const heroName = cleanText(`⚔️ ${actionLabel} | ${targetName} ${serverTag}`);
-        
-        // SERVER LOCK: Abort if any hero alarm for this server tag already exists
-        const serverHeroExists = currentAlarms.some(a => 
-            a.name.includes("⚔️") && 
-            a.name.includes(serverTag) &&
-            Math.abs(a.scheduledTime - scheduledTime) < 30000 // 30s drift buffer
-        );
-
-        if (!serverHeroExists && !localTracked.has(heroName)) {
-            localTracked.add(heroName);
-            foundHeroes.push({ name: heroName, delay: delayValue });
+    } else {
+        noAttackConsecutiveScans++;
+        if (noAttackConsecutiveScans === 20) {
+            browser.runtime.sendMessage({ type: "ATTACK_CLEARED", name: alarmName });
         }
-    });
+    }
 
-    return foundHeroes;
+    return [];
 }
 
-// ... rest of your functions (scanVillages, scanBuildings, handleQueueCleanup, etc.) remain as provided in version 1.8
+// ... (Standard logic functions) ...
 
 function scanVillages() {
     const map = {};
@@ -269,6 +340,68 @@ function handleQueueCleanup(matchedIds, activeVillage) {
     });
 }
 
+function scanHero(activeVillage, villageMap) {
+    const heroTimers = document.querySelectorAll('.heroStatus .timer, #sidebarBoxHero .timer, .tippy-content .timer, #travian_tooltip .timer');
+    if (!heroTimers || heroTimers.length === 0) return [];
+
+    const foundHeroes = [];
+
+    heroTimers.forEach(heroTimer => {
+        const parent = heroTimer.closest('.heroStatus, #sidebarBoxHero, .tippy-content, #travian_tooltip');
+        if (!parent) return;
+
+        const rawStatus = parent.querySelector('.text')?.innerText || "";
+        const rawStatusLower = rawStatus.toLowerCase();
+        
+        const delayValue = ((heroTimer.getAttribute('value') | 0) * 1000) - 2000;
+        const scheduledTime = Date.now() + delayValue;
+        
+        if (delayValue <= 0) return;
+
+        const coordMatch = rawStatus.match(/\([−-]?\d+[|/][−-]?\d+\)/);
+        let matchedVillageName = "";
+        if (coordMatch) {
+            const key = cleanCoords(coordMatch[0]);
+            matchedVillageName = villageMap[key];
+        }
+
+        const homeLink = parent.querySelector('a[href*="id="]');
+        let originName = homeLink ? cleanText(homeLink.innerText.split('\n')[0]) : (activeVillage || "Home Village");
+
+        let actionLabel = "";
+        let targetName = "";
+
+        if (rawStatusLower.includes("oasis")) {
+            actionLabel = "Going to Oasis";
+            targetName = originName;
+        } else if (rawStatusLower.includes("adventure")) {
+            actionLabel = "Going to Adventure";
+            targetName = originName;
+        } else if (rawStatusLower.includes("reinforce")) {
+            actionLabel = "Reinforcing";
+            targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName);
+        } else {
+            actionLabel = "Returning to";
+            targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName);
+        }
+
+        const heroName = cleanText(`⚔️ ${actionLabel} | ${targetName} ${serverTag}`);
+        
+        const serverHeroExists = currentAlarms.some(a => 
+            a.name.includes("⚔️") && 
+            a.name.includes(serverTag) &&
+            Math.abs(a.scheduledTime - scheduledTime) < 30000 
+        );
+
+        if (!serverHeroExists && !localTracked.has(heroName)) {
+            localTracked.add(heroName);
+            foundHeroes.push({ name: heroName, delay: delayValue });
+        }
+    });
+
+    return foundHeroes;
+}
+
 function scanAttacks(activeVillage) {
     const p = new URLSearchParams(window.location.search);
     if (p.get('gid') !== '16' || p.get('tt') !== '1' || p.get('filter') !== '1' || p.get('subfilters') !== '1') {
@@ -335,18 +468,7 @@ function scanAttacks(activeVillage) {
     return found;
 }
 
-function parseTimeInput(val) {
-    if (!val) return null;
-    val = val.trim();
-    if (val.includes(':')) {
-        const parts = val.split(':').map(n => parseInt(n) || 0);
-        if (parts.length === 3) return (parts[0]*3600 + parts[1]*60 + parts[2]) * 1000;
-        if (parts.length === 2) return (parts[0]*60 + parts[1]) * 1000;
-    }
-    const num = parseFloat(val);
-    if (!isNaN(num)) return num * 60 * 1000;
-    return null;
-}
+// ... (UI Functions) ...
 
 function formatTimeLeft(ms) {
     const s = Math.max(0, (ms / 1000) | 0);
@@ -363,11 +485,14 @@ async function syncState(force = false) {
     currentAlarms = alarms;
     localTracked = new Set(currentAlarms.map(a => a.name.replace(/\s#\d+$/, '')));
     if (typeof muteBtn !== 'undefined' && muteBtn) muteBtn.innerText = res.isMuted ? "🔇" : "🔊";
+    
     currentAlarms.sort((a, b) => {
-        const aD = (a.scheduledTime - now) <= 0;
-        const bD = (b.scheduledTime - now) <= 0;
-        if (aD !== bD) return aD ? -1 : 1; 
-        if (aD && bD) {
+        const aDone = (a.scheduledTime - now) <= 0;
+        const bDone = (b.scheduledTime - now) <= 0;
+        
+        if (aDone !== bDone) return aDone ? -1 : 1; 
+        
+        if (aDone && bDone) {
             const getTag = (s) => {
                 const m = s.match(/\[([^\]]+)\]\s*$/);
                 return m ? m[1] : "zzz";
@@ -375,7 +500,22 @@ async function syncState(force = false) {
             const tagA = getTag(a.name);
             const tagB = getTag(b.name);
             if (tagA !== tagB) return tagA.localeCompare(tagB);
+
+            const getVillage = (s) => {
+                let clean = s.replace(/\[[^\]]+\]/g, '').trim(); 
+                const pMatch = clean.match(/\(([^)]+)\)/);
+                if (pMatch) return pMatch[1].trim(); 
+                if (clean.includes('|')) return clean.split('|')[1].trim(); 
+                return "ZZ_Global"; 
+            };
+            
+            const villA = getVillage(a.name);
+            const villB = getVillage(b.name);
+            if (villA !== villB) return villA.localeCompare(villB);
+
+            return a.name.localeCompare(b.name);
         }
+
         if (a.scheduledTime !== b.scheduledTime) return a.scheduledTime - b.scheduledTime;
         return a.name.localeCompare(b.name);
     });
@@ -396,7 +536,13 @@ function rebuildUI() {
         }
         if (!node) {
             node = createAlarmNode(a, uid);
-        } 
+        } else {
+            const nameNode = node.querySelector('.n');
+            if (nameNode) {
+                nameNode.innerHTML = getStyledDisplayName(a.name, a.recurring > 0);
+            }
+        }
+
         const currentNodeAtIndex = listContainer.children[index];
         if (currentNodeAtIndex !== node) {
             if (currentNodeAtIndex) {
@@ -429,22 +575,9 @@ function createAlarmNode(a, uniqueId) {
     if (isCustom) { extraClass = (a.customType === 'manual') ? "baby-pink" : "lean-purple"; } 
     else if (a.name.includes('⚔️')) { extraClass = "hero-gold"; } 
     else if (a.name.includes('⚠️')) { extraClass = "res-alert"; }
-    let displayName = a.name;
-    if (a.name.includes('|')) {
-        const idx = a.name.indexOf('|');
-        const boldPart = a.name.substring(0, idx);
-        const greyPart = a.name.substring(idx + 1);
-        displayName = `${boldPart.trim()}<span style="color: #9ca3af !important; font-weight: normal; margin-left: 5px;">${greyPart.trim()}</span>`;
-    } else {
-        const parts = a.name.match(/^(.*?)(\s\(.*?\)\s\[.*?\])(\s#\d+)?$/);
-        if (parts) { displayName = `${parts[1]}<span style="color: #9ca3af !important; font-weight: normal;">${parts[2]}</span>${parts[3] || ""}`; } 
-        else {
-            const oldParts = a.name.match(/^(.*?)(\s\(.*?\))(\s#\d+)?$/);
-            if (oldParts) { displayName = `${oldParts[1]}<span style="color: #9ca3af !important; font-weight: normal;">${oldParts[2]}</span>${oldParts[3] || ""}`; }
-        }
-    }
-    displayName = displayName.replace('⚠️', '<span class="danger-icon">⚠️</span>');
-    if (a.recurring > 0) { displayName += `<span class="recurring-indicator" title="Recurring Alarm">↺</span>`; }
+    
+    const displayName = getStyledDisplayName(a.name, a.recurring > 0);
+    
     const editBtn = isCustom ? `<span class="watchman-edit" title="Edit" data-uid="${uniqueId}">✎</span>` : '';
     const div = document.createElement('div');
     div.className = 'alarm-item';
@@ -467,41 +600,62 @@ function setupAlarmListeners(node, a, uniqueId) {
     if (editBtn) {
         editBtn.onclick = (e) => {
             e.stopPropagation();
-            const nameContainer = node.querySelector('.name-container');
-            const timeNode = node.querySelector('.t');
-            const rawName = a.name.replace(/^⭐\s*/, ''); 
-            const timeLeftVal = formatTimeLeft(a.scheduledTime - Date.now());
-            nameContainer.innerHTML = `<input type="text" class="inline-editor name-edit" value="">`;
-            timeNode.innerHTML = `<input type="text" class="inline-editor time-edit" value="" style="width:40px; text-align:right;">`;
-            const nameInput = nameContainer.querySelector('input');
-            const timeInput = timeNode.querySelector('input');
-            nameInput.value = rawName;
-            timeInput.value = timeLeftVal;
-            nameInput.focus();
-            let saved = false;
-            const save = () => {
-                if (saved) return;
-                setTimeout(() => {
-                    if (document.activeElement === nameInput || document.activeElement === timeInput) return;
-                    saved = true;
-                    const newNameVal = nameInput.value.trim();
-                    const newTimeStr = timeInput.value.trim();
-                    const finalName = "⭐ " + (newNameVal || rawName);
-                    const newDelay = parseTimeInput(newTimeStr);
-                    if (newNameVal !== rawName || (newDelay && newTimeStr !== timeLeftVal)) {
-                        browser.runtime.sendMessage({ type: "EDIT_ALARM", id: a.id, newName: finalName, newDelay: newDelay }).then(() => syncState(true));
-                    } else { syncState(true); }
-                }, 100);
-            };
-            const handleKey = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.target.blur(); } };
-            nameInput.onclick = (ev) => ev.stopPropagation();
-            nameInput.onkeydown = handleKey;
-            nameInput.onblur = save;
-            timeInput.onclick = (ev) => ev.stopPropagation();
-            timeInput.onkeydown = handleKey;
-            timeInput.onblur = save;
+            
+            // 1. Prepare Content for Prompts
+            let currentTag = serverTag;
+            const tagMatch = a.name.match(/\[[^\]]+\]/);
+            if (tagMatch) currentTag = tagMatch[0];
+
+            let middleContent = a.name.replace(currentTag, '').replace(/^⭐\s*/, '').trim();
+            
+            let villageContext = "";
+            let nameToEdit = middleContent;
+
+            if (middleContent.includes('|')) {
+                const parts = middleContent.split('|');
+                nameToEdit = parts[0].trim();
+                villageContext = parts[1].trim();
+            } else {
+                const pMatch = middleContent.match(/^(.*?)(\s\(.*?\))(\s#\d+)?$/);
+                if (pMatch) {
+                    nameToEdit = pMatch[1].trim();
+                    villageContext = pMatch[2].replace(/[()]/g, '').trim(); 
+                }
+            }
+
+            // 2. Prompt for Name
+            const newNameVal = prompt("Edit Name:", nameToEdit);
+            if (newNameVal === null) return; // Cancelled
+
+            // 3. Prompt for Time
+            const currentDurationStr = formatDurationForPrompt(a.scheduledTime - Date.now());
+            const newTimeStr = prompt("Edit Time Remaining (e.g. 15, 1:30):", currentDurationStr);
+            if (newTimeStr === null) return; // Cancelled
+
+            // 4. Process & Save
+            let finalBaseName = newNameVal.trim() || nameToEdit;
+            if (villageContext) {
+                finalBaseName = `${finalBaseName} | ${villageContext}`;
+            }
+
+            const finalName = `⭐ ${finalBaseName} ${currentTag}`;
+            const newDelay = parseSmartDuration(newTimeStr);
+            
+            // If new time is invalid or same, don't change time. If changed, we update.
+            // Note: If newDelay is valid, it resets the timer start from NOW.
+            
+            if (newNameVal !== nameToEdit || (newDelay !== null)) {
+                browser.runtime.sendMessage({ 
+                    type: "EDIT_ALARM", 
+                    id: a.id, 
+                    newName: finalName, 
+                    newDelay: newDelay 
+                }).then(() => syncState(true));
+            }
         };
     }
+    
+    // Deletion Logic
     node.querySelector('.trigger').onclick = () => {
         if (node.querySelector('.inline-editor')) return;
         const now = Date.now();
@@ -525,6 +679,9 @@ function setupAlarmListeners(node, a, uniqueId) {
     };
     node.querySelector('.watchman-del').onclick = (e) => { 
         e.stopPropagation(); 
+        if (a.customType === 'attack') {
+            suppressedAttacks.add(a.name);
+        }
         browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name }).then(syncState); 
     };
 }
@@ -574,7 +731,8 @@ const submitCustomAlarm = () => {
     const secs = parseInt(secInp.value, 10) || 0;
     const totalMs = (hrs * 3600 * 1000) + (mins * 60 * 1000) + (secs * 1000);
     if (!isNaN(totalMs) && totalMs > 0) {
-        browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${nameInp.value.trim() || "Alarm"} ${serverTag}`, delay: totalMs, customType: 'manual' }] }).then(() => {
+        const vName = getActiveVillageName();
+        browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${nameInp.value.trim() || "Alarm"} | ${vName} ${serverTag}`, delay: totalMs, customType: 'manual' }] }).then(() => {
             nameInp.value = ""; hrInp.value = ""; minInp.value = ""; secInp.value = "";
             inputRow.style.display = 'none'; toggleBtn.innerText = '+'; syncState();
         });
@@ -595,25 +753,38 @@ function loadShortcuts() {
             const opt = document.createElement('div');
             opt.className = 'dropdown-option clickable';
             const activeClass = s.isRecurring ? 'is-active' : '';
+            
+            const durationMs = s.ms || (s.minutes * 60 * 1000);
+            
             opt.innerHTML = `<span>${s.label}</span><div class="shortcut-actions"><span class="recurring-toggle ${activeClass}" title="Toggle Recurring">↺</span><span class="edit-shortcut" title="Edit Shortcut">✎</span><span class="remove-shortcut" title="Delete Shortcut">✕</span></div>`;
-            opt.onclick = (e) => { e.stopPropagation(); handleDropdownAction(s.minutes, s.label, s.isRecurring); document.getElementById('custom-dropdown-menu').style.display = 'none'; };
+            opt.onclick = (e) => { e.stopPropagation(); handleDropdownAction(durationMs, s.label, s.isRecurring); document.getElementById('custom-dropdown-menu').style.display = 'none'; };
             const recBtn = opt.querySelector('.recurring-toggle');
             recBtn.onclick = (e) => { e.stopPropagation(); toggleRecurringShortcut(s.label); };
             const editBtn = opt.querySelector('.edit-shortcut');
-            editBtn.onclick = (e) => { e.stopPropagation(); editShortcut(s.label, s.minutes); };
+            editBtn.onclick = (e) => { e.stopPropagation(); editShortcut(s.label, durationMs); };
             opt.querySelector('.remove-shortcut').onclick = (e) => { e.stopPropagation(); deleteShortcut(s.label); };
             anchor.appendChild(opt);
         });
     });
 }
 
-async function editShortcut(oldLabel, oldMinutes) {
-    const newMinutesStr = prompt("Edit duration (minutes):", oldMinutes);
-    if (!newMinutesStr || isNaN(newMinutesStr)) return;
+async function editShortcut(oldLabel, oldMs) {
+    const currentDurationStr = formatDurationForPrompt(oldMs);
+    const newDurationStr = prompt("Edit duration (e.g. 15, 13:30, 13.30):", currentDurationStr);
+    
+    const newMs = parseSmartDuration(newDurationStr);
+    if (newMs === null) return;
+
     const newLabel = prompt("Edit label:", oldLabel);
     if (!newLabel) return;
+    
     const res = await browser.storage.local.get({ watchmanShortcuts: [] });
-    const newList = res.watchmanShortcuts.map(s => { if (s.label === oldLabel) { return { ...s, label: newLabel, minutes: parseInt(newMinutesStr) }; } return s; });
+    const newList = res.watchmanShortcuts.map(s => { 
+        if (s.label === oldLabel) { 
+            return { ...s, label: newLabel, ms: newMs, minutes: undefined }; 
+        } 
+        return s; 
+    });
     await browser.storage.local.set({ watchmanShortcuts: newList });
     loadShortcuts();
 }
@@ -627,21 +798,24 @@ async function toggleRecurringShortcut(label) {
 
 async function handleDropdownAction(val, label, isRecurring) {
     if (val === "CREATE_NEW") {
-        const mins = prompt("Enter duration in minutes:");
-        if (mins && !isNaN(mins)) {
-            const labelStr = prompt("Enter label (e.g. 45m):", mins + "m");
+        const durStr = prompt("Enter duration (e.g. 15, 13:30, 13.30):");
+        const ms = parseSmartDuration(durStr);
+        
+        if (ms !== null) {
+            const defaultLabel = formatDurationForPrompt(ms) + "m";
+            const labelStr = prompt("Enter label:", defaultLabel);
             if (labelStr) {
                 const res = await browser.storage.local.get({ watchmanShortcuts: DEFAULT_SHORTCUTS });
-                const newList = [...res.watchmanShortcuts, { label: labelStr, minutes: parseInt(mins), isRecurring: false }];
+                const newList = [...res.watchmanShortcuts, { label: labelStr, ms: ms, isRecurring: false }];
                 await browser.storage.local.set({ watchmanShortcuts: newList, watchmanHasInitialized: true });
                 loadShortcuts();
             }
         }
         return;
     }
-    const mins = parseInt(val);
-    const msDelay = mins * 60 * 1000;
-    browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${label || mins + 'm Timer'} ${serverTag}`, delay: msDelay, recurring: isRecurring ? msDelay : 0 }] }).then(() => syncState());
+    
+    const vName = getActiveVillageName();
+    browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${label} | ${vName} ${serverTag}`, delay: val, recurring: isRecurring ? val : 0 }] }).then(() => syncState());
 }
 
 async function deleteShortcut(label) {
@@ -649,6 +823,43 @@ async function deleteShortcut(label) {
     const newList = res.watchmanShortcuts.filter(s => s.label !== label);
     await browser.storage.local.set({ watchmanShortcuts: newList, watchmanHasInitialized: true });
     loadShortcuts();
+}
+
+browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === "PARSE_CONTEXT_ALARM") {
+        handleContextParser(msg.text);
+    }
+});
+
+function handleContextParser(text) {
+    if (!text) return;
+    
+    const dateMatch = text.match(/(\d{1,2})\.(\d{1,2})\./);
+    const timeMatch = text.match(/(\d{1,2}):(\d{1,2})/);
+    
+    if (dateMatch && timeMatch) {
+        const d = new Date();
+        d.setDate(parseInt(dateMatch[1], 10));
+        d.setMonth(parseInt(dateMatch[2], 10) - 1);
+        d.setHours(parseInt(timeMatch[1], 10));
+        d.setMinutes(parseInt(timeMatch[2], 10));
+        d.setSeconds(0);
+        
+        if (d.getTime() < Date.now()) {
+            d.setFullYear(d.getFullYear() + 1);
+        }
+        
+        const delay = d.getTime() - Date.now();
+        if (delay > 0) {
+            const vName = getActiveVillageName();
+            const alarmName = `⭐ Resources | ${vName} ${serverTag}`;
+            
+            browser.runtime.sendMessage({ 
+                type: "REFRESH_ALARMS", 
+                buildings: [{ name: alarmName, delay: delay, customType: 'manual' }] 
+            }).then(() => syncState());
+        }
+    }
 }
 
 function startLoops() {
@@ -678,11 +889,33 @@ function createWidget() {
     document.addEventListener('click', () => { if(dropdownMenu) dropdownMenu.style.display = 'none'; });
     div.querySelector('#create-new-trigger').onclick = () => handleDropdownAction("CREATE_NEW", "");
     toggleBtn.onclick = () => { if (inputRow.style.display === 'flex') { submitCustomAlarm(); } else { inputRow.style.display = 'flex'; toggleBtn.innerText = '✓'; nameInp.focus(); } };
-    [nameInp, hrInp, minInp, secInp].forEach(input => { input.addEventListener('keypress', (e) => { if (e.key === 'Enter') submitCustomAlarm(); }); });
+    
+    // --- LOCAL SUBMIT FUNCTION WITH CORRECT SCOPE ---
+    const submitLocalAlarm = () => {
+        const hrs = parseInt(hrInp.value, 10) || 0;
+        const mins = parseInt(minInp.value, 10) || 0;
+        const secs = parseInt(secInp.value, 10) || 0;
+        const totalMs = (hrs * 3600 * 1000) + (mins * 60 * 1000) + (secs * 1000);
+        if (!isNaN(totalMs) && totalMs > 0) {
+            const vName = getActiveVillageName();
+            browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${nameInp.value.trim() || "Alarm"} | ${vName} ${serverTag}`, delay: totalMs, customType: 'manual' }] }).then(() => {
+                nameInp.value = ""; hrInp.value = ""; minInp.value = ""; secInp.value = "";
+                inputRow.style.display = 'none'; toggleBtn.innerText = '+'; syncState();
+            });
+        } else { inputRow.style.display = 'none'; toggleBtn.innerText = '+'; }
+    };
+
+    [nameInp, hrInp, minInp, secInp].forEach(input => { 
+        input.addEventListener('keydown', (e) => { 
+            if (e.key === 'Enter') submitLocalAlarm(); 
+        }); 
+    });
+    
     const clearBtn = div.querySelector('#clear-all');
     clearBtn.onclick = async () => { if (currentAlarms.length === 0) return; if (confirm("Clear all active timers?")) { const deletePromises = currentAlarms.map(a => browser.runtime.sendMessage({ type: "DELETE_ALARM", name: a.name })); await Promise.all(deletePromises); silencedAlarms.clear(); syncState(); } };
     const muteBtn = div.querySelector('#mute-toggle');
     muteBtn.onclick = () => { browser.runtime.sendMessage({ type: "TOGGLE_MUTE" }).then(res => { if (res) muteBtn.innerText = res.isMuted ? "🔇" : "🔊"; }); };
+    
     return { timerWidget: div, listContainer: div.querySelector('#timer-list'), inputRow, toggleBtn, nameInp, hrInp, minInp, secInp, muteBtn };
 }
 
