@@ -1,5 +1,3 @@
--organize done by village name as well
-
 -hover over storage to add alarm whenever its full if under x ammount of time
 
 -hero timer rework, provide return timer right away
@@ -8,5 +6,4 @@
 
 -settings
 
--ping when attacked
 
