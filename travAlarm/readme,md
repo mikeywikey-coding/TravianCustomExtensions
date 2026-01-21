@@ -8,7 +8,7 @@ Automatic Queue Sync: Automatically detects and tracks every building in your co
 Multi-Village Awareness: Labels alarms with the specific village name so you know exactly where your resources are being spent.
 
 Hero & Combat Intelligence
-Hero Lock: Efficiently tracks your hero. It cross-references coordinates in tooltips to specify if your hero is returning to a specific village or heading to an adventure/oasis.
+Hero Lock: Simply hover over the hero overview to populate the alarm list, it cross-references coordinates in tooltips to specify if your hero is returning to a specific village or heading to an adventure/oasis.
 Attack Alerts: Scans the Rally Point to highlight incoming attacks and raids with high-visibility cyan and gold indicators.
 Multi-Server: Everything was designed with multi-server play in mind, it's able to manage multiple servers, multiple heros with no issues.
 Advanced UI/UX
