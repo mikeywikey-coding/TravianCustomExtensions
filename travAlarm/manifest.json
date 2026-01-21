@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Travian Watchman Pro",
+  "version": "1.7",
+  "permissions": ["notifications", "alarms", "storage"],
+  "host_permissions": ["*://*.travian.com/*"],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.travian.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ]
+}

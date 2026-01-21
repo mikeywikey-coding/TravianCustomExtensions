@@ -1,0 +1,394 @@
+/* =========================================
+   TRAVIAN WATCHMAN PRO - CONTENT STYLES
+   ========================================= */
+
+/* -----------------------------------------
+   ANIMATIONS
+   Used to visually alert the user when an alarm is overdue.
+   ----------------------------------------- */
+@keyframes watchman-flash-red {
+    0% { color: #ff0000; text-shadow: 0 0 8px rgba(255, 0, 0, 0.8); }
+    50% { color: #b91c1c; text-shadow: none; }
+    100% { color: #ff0000; text-shadow: 0 0 8px rgba(255, 0, 0, 0.8); }
+}
+
+/* Applied to the timer text and building name when time < 0 */
+.flashing-alarm { 
+    animation: watchman-flash-red 0.8s infinite; 
+    font-weight: 900 !important; 
+}
+
+/* PROTECT DESCRIPTORS: 
+   Keeps the "(Village Name) [Server]" text grey and un-flashed 
+   even while the parent container is flashing red. This improves readability. */
+.flashing-alarm span {
+    color: #9ca3af !important;
+    text-shadow: none !important;
+}
+
+/* -----------------------------------------
+   WIDGET LIST CONTAINER
+   The scrollable area containing the list of active timers.
+   ----------------------------------------- */
+#timer-list { 
+    /* Hide scrollbars for a cleaner look, but keep functionality */
+    -ms-overflow-style: none !important; 
+    scrollbar-width: none !important; 
+}
+#timer-list::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+
+/* Remove spinner arrows from number inputs (Chrome/Safari/Edge) */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; } /* Firefox */
+
+/* -----------------------------------------
+   ALARM ITEM ROW
+   Represents a single timer entry in the list.
+   ----------------------------------------- */
+.alarm-item { 
+    contain: content; /* Browser optimization: limits repaint scope */
+    margin: 5px 0; 
+    border-bottom: 1px solid rgba(255,255,255,0.08); 
+    padding: 5px 0; 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden; 
+}
+
+/* The clickable area that toggles silence/delete actions */
+.trigger { 
+    display: flex; 
+    flex-direction: row; 
+    justify-content: space-between; 
+    align-items: flex-start; 
+    cursor: pointer; 
+    flex: 1; 
+    min-width: 0; 
+}
+
+.name-container { 
+    flex: 1; 
+    margin-right: 8px; 
+    padding-left: 2px; 
+    word-break: break-word; /* Ensure long building names wrap */
+    overflow: visible; 
+}
+
+.n { 
+    display: block; 
+    white-space: normal; 
+    line-height: 1.2; 
+    padding-left: 2px; 
+    transition: all 0.3s ease; 
+}
+
+/* The countdown timer text (e.g. "14:30") */
+.t { 
+    color: #71d000; /* Default green */
+    font-weight: bold; 
+    font-size: 13px; 
+    font-family: monospace; 
+    flex-shrink: 0; 
+    margin-top: -1px;
+    white-space: nowrap;
+    margin-right: -5px;
+}
+
+/* -----------------------------------------
+   BUTTONS & ICONS (Edit, Delete, Recur)
+   ----------------------------------------- */
+.watchman-del { 
+    transition: all 0.1s ease-in-out; 
+    opacity: 0.4; 
+    cursor: pointer; 
+    font-size: 14px; 
+    padding-left: 8px; 
+    flex-shrink: 0; 
+    align-self: flex-start; 
+}
+.watchman-del:hover { 
+    opacity: 1 !important; 
+    transform: scale(1.3); 
+    filter: brightness(1.5); 
+}
+
+/* Edit pencil icon: Hidden by default, slides in on hover */
+.watchman-edit { 
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer; font-size: 14px; 
+    flex-shrink: 0; align-self: flex-start; color: #fff;
+    white-space: nowrap; overflow: hidden; 
+    width: 0; opacity: 0; padding-left: 0;
+    position: relative;
+    top: 0px;   
+	left: 9px;
+}
+
+.alarm-item:hover .watchman-edit {
+    width: 20px; 
+    opacity: 0.4;
+    padding-left: 5px;
+    pointer-events: auto;
+}
+
+.watchman-edit:hover { 
+    opacity: 1 !important; 
+    transform: scale(1.3); 
+    filter: brightness(1.5); 
+    color: #4ade80; 
+}
+
+/* Inline input fields for renaming/editing time */
+.inline-editor {
+    background: rgba(0,0,0,0.5); 
+    border: 1px solid #777; 
+    color: #fff; 
+    font-size: 11px; 
+    width: 100%; 
+    border-radius: 3px; 
+    padding: 2px;
+    font-family: Arial, sans-serif;
+}
+
+/* Inputs for the "New Alarm" row */
+.custom-input { 
+    background: rgba(0,0,0,0.3); 
+    border: 1px solid #444; 
+    color: #fff; 
+    font-size: 10px; 
+    padding: 3px; 
+    border-radius: 3px; 
+    outline: none; 
+    margin-right: 2px; 
+}
+
+/* -----------------------------------------
+   HEADER CONTROLS & DROPDOWN
+   ----------------------------------------- */
+.add-btn, #dropdown-trigger-btn { 
+    height: 20px !important; 
+    box-sizing: border-box; 
+    border-radius: 4px !important;
+    border: 2px solid transparent !important; 
+    cursor: pointer; 
+    display: flex;
+    align-items: center; 
+    justify-content: center; 
+    transition: box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+/* Clear All Button (Red Trash Can) */
+#clear-all { 
+    background: #e11d48 !important; 
+    color: white !important; 
+    width: 24px !important; 
+    font-size: 11px !important; 
+    border-color: #e11d48 !important; 
+    box-shadow: 0 0 5px 1px rgba(225, 29, 72, 0.7) !important; 
+}
+#clear-all:hover { 
+    box-shadow: 0 0 8px 2px rgba(225, 29, 72, 0.9) !important; 
+    filter: brightness(1.1); 
+}
+
+/* Add Button (Green Plus) */
+#toggle-input { 
+    background: #71d000 !important; 
+    color: #000 !important; 
+    width: 24px !important; 
+    font-weight: bold !important; 
+    font-size: 14px !important; 
+    border-color: #71d000 !important; 
+    box-shadow: 0 0 5px 1px rgba(113, 208, 0, 0.7) !important; 
+}
+#toggle-input:hover { 
+    box-shadow: 0 0 8px 2px rgba(113, 208, 0, 0.9) !important; 
+    filter: brightness(1.1); 
+}
+
+#custom-dropdown-container { position: relative; display: inline-block; vertical-align: middle; }
+
+/* The Lightning Bolt Icon for Quick Presets */
+#dropdown-trigger-btn {
+    width: 32px; 
+    background-color: #9333ea !important;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='yellow'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>");
+    background-repeat: no-repeat; 
+    background-position: center; 
+    background-size: 14px;
+    border-color: #9333ea !important; 
+    box-shadow: 0 0 5px 1px rgba(147, 51, 234, 0.8) !important;
+}
+#dropdown-trigger-btn:hover { 
+    box-shadow: 0 0 8px 2px rgba(147, 51, 234, 1) !important; 
+    filter: brightness(1.1); 
+}
+
+/* -----------------------------------------
+   COLOR CLASSES (Visual Indicators)
+   ----------------------------------------- */
+/* Purple: Recurring/Preset Alarms */
+.lean-purple { color: #a855f7 !important; }
+
+/* Pink: Manual/Custom Alarms */
+.baby-pink { color: #fa86c4 !important; text-shadow: 0 0 5px rgba(250, 134, 196, 0.4); } 
+
+/* Cyan: Resource Alerts */
+.res-alert { color: #46f1fa !important; text-shadow: 0 0 4px rgba(252, 167, 48, 0.4); }
+
+/* Gold: Hero/Attack Alerts */
+.hero-gold { color: #ffcc00 !important; text-shadow: 0 0 4px rgba(252, 167, 48, 0.4); }
+
+.danger-icon { 
+    font-size: 13px; 
+    vertical-align: middle; 
+    margin-right: 0.7px; 
+    position: relative; 
+    bottom: 3.61px; 
+}
+
+#input-row { display: none; align-items: center; margin-top: 8px; justify-content: space-between; }
+.row-wrapper { display: flex; align-items: flex-start; justify-content: space-between; width: 100%; }
+
+/* -----------------------------------------
+   DROPDOWN MENU (Presets)
+   ----------------------------------------- */
+#custom-dropdown-menu {
+    display: none; 
+    position: absolute; 
+    top: 24px; 
+    right: 0; 
+    background-color: #1a1a1a;
+    border: 2px solid #9333ea; 
+    border-radius: 6px; 
+    min-width: 110px; 
+    z-index: 10000;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.8); 
+    overflow: hidden;
+}
+
+.dropdown-option {
+    padding: 8px 10px; 
+    color: #ffffff; 
+    font-size: 11px; 
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.05); 
+    display: flex;
+    justify-content: space-between; 
+    align-items: center; 
+    white-space: nowrap; 
+    font-family: Arial, sans-serif;
+}
+.dropdown-option:last-child { border-bottom: none; }
+
+.dropdown-header { 
+    background-color: #1a1a1a; 
+    color: #ffffff; 
+    font-weight: bold; 
+    cursor: default; 
+    border-bottom: 2px solid #9333ea; 
+    display: block; 
+    text-align: center; 
+}
+
+.dropdown-option.clickable:hover { background-color: #333; }
+.dropdown-option.new-btn { color: #71d000; font-weight: bold; justify-content: center; }
+
+.shortcut-actions { display: flex; align-items: center; }
+
+/* Preset Icons: Delete, Edit, Toggle Recurring */
+.remove-shortcut { 
+    color: #ef4444; 
+    font-weight: bold; 
+    padding: 0 4px; 
+    opacity: 0.5; 
+    transition: opacity 0.2s; 
+    display: inline-block;
+    position: relative;
+    top: 0px;         
+    margin-left: 5px;  
+}
+.remove-shortcut:hover { opacity: 1; transform: scale(1.2); }
+
+.edit-shortcut { 
+    color: #fff; 
+    font-weight: bold; 
+    font-size: 12px; 
+    opacity: 0.4; 
+    transition: opacity 0.2s; 
+    cursor: pointer;
+    display: inline-block;
+    position: relative;
+    top: 0px;          
+    margin-left: 5px;  
+    margin-right: -1px; 
+}
+.edit-shortcut:hover { opacity: 1; transform: scale(1.2); color: #4ade80; }
+
+.recurring-toggle { 
+    font-size: 14px; 
+    opacity: 0.4; 
+    transition: all 0.2s; 
+    color: #fff; 
+    line-height: 1; 
+    display: inline-block;
+    position: relative;
+    top: -1px;          
+    margin-left: 7px;  
+    margin-right: 2px; 
+}
+.recurring-toggle:hover { opacity: 0.8; transform: scale(1.2); }
+.recurring-toggle.is-active { 
+    opacity: 1 !important; 
+    color: #71d000 !important; 
+    text-shadow: 0 0 5px rgba(113, 208, 0, 0.6); 
+}
+
+.recurring-indicator {
+    display: inline-block; 
+    color: #71d000; 
+    font-size: 12px; 
+    vertical-align: middle;
+    position: relative;
+    top: -1px;         
+    margin-left: 5px;  
+}
+
+/* -----------------------------------------
+   WIDGET POSITION & LAYOUT
+   The main floating container on the right side of the screen.
+   ----------------------------------------- */
+#minimize-btn { 
+    background: #444 !important; 
+    color: white !important; 
+    width: 24px !important; 
+    font-size: 10px !important; 
+    border-color: #555 !important; 
+}
+
+.header-controls { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    width: 100%; 
+}
+
+/* Minimized state styles */
+.is-minimized #timer-list, .is-minimized #input-row { display: none !important; }
+.is-minimized { width: 160px !important; }
+
+#travian-timer-widget {
+    position: fixed; 
+    right: 13px; 
+    top: 148px; /* Offset to clear game header */
+    width: 210px; 
+    z-index: 9999; /* Ensure it floats above all game elements */
+    background-color: transparent; 
+    border-radius: 8px; 
+    border: 1px solid #4a4a4a;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.8); 
+    font-family: Arial, sans-serif;
+    backdrop-filter: blur(8px); /* Glassmorphism effect */
+    pointer-events: auto;
+}

@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Travian Resource Sum",
+  "version": "1.5",
+  "description": "Persistent grand total of resources.",
+  "permissions": ["activeTab"],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.travian.com/village/statistics*" 
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

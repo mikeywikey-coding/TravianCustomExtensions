@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Travian Reports Opener",
+  "version": "1.4",
+  "description": "Opens all unread reports in new tabs.",
+  "permissions": ["tabs"],
+  "host_permissions": ["*://*.travian.com/*"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.travian.com/report*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
