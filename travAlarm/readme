@@ -7,13 +7,10 @@ Automatic Queue Sync: Automatically detects and tracks every building in your co
 
 Multi-Village Awareness: Labels alarms with the specific village name so you know exactly where your resources are being spent.
 
-⚔️ Hero & Combat Intelligence
+Hero & Combat Intelligence
 Hero Lock: Efficiently tracks your hero. It cross-references coordinates in tooltips to specify if your hero is returning to a specific village or heading to an adventure/oasis.
-
 Attack Alerts: Scans the Rally Point to highlight incoming attacks and raids with high-visibility cyan and gold indicators.
-
-Single-Server Integrity: One hero per server? One alarm per server. No duplicates when switching villages.
-
+Multi-Server: Everything was designed with multi-server play in mind, it's able to manage multiple servers, multiple heros with no issues.
 Advanced UI/UX
 Glassmorphism Design: A sleek, semi-transparent floating widget that clears the game header.
 
@@ -33,22 +30,18 @@ Open your browser and navigate to: about:debugging#/runtime/this-firefox
 
 Click Load Temporary Add-on and select any file in the folder, refresh any travian tab you have open and boom done.
 
-🖱️ How to Use
+How to Use
 1. The Construction Dashboard
 As soon as you start a building, Watchman Pro detects it. The timer will appear in the floating widget on the right.
-
 Left-Click a "DONE" timer once to silence the alarm.
-
 Left-Click again to delete it from the list.
+This is the same logic for recurring alarms, click on them twice to immediately restart them, this especially useful for farmlists. 
 
 2. Adding Manual Alarms
 Need a reminder for something specific?
-
 Click the + button in the widget header.
-
-Enter a Name and the duration (Hours, Minutes, Seconds).
-
-Click the Checkmark to start. These appear in a distinct Baby Pink color.
+Enter a Name  the duration (Hours, Minutes, Seconds).
+Click enter or the checkmark to start it, these appear in a baby pink color.
 
 3. Quick Presets
 Start Timer: Click a preset name to begin a countdown immediately.
@@ -64,14 +57,8 @@ Click on the red trash can icon in the header to wipe all alarms instantly.
 Click on the speaker on the top right to quickly silence audio alerts without losing your visual timers.
 
 
-🛠️ Technical Details
+Technical Details
 Built With: JavaScript (ES6+), CSS Grid/Flexbox, and the WebExtensions API.
-
-Performance: Throttled scanning (500ms intervals) ensures zero impact on game performance or CPU usage.
-
 Privacy: All data is stored locally in your browser (storage.local). No data ever leaves your machine.
 
-📝 License
-This project is licensed under the MIT License.
-
-Disclaimer: This extension is a fan-made tool. Always ensure you are complying with the game's Terms of Service while using third-party scripts or extensions.
+Disclaimer: This extension complies with the game's TOS, so no worries.
