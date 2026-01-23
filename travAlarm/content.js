@@ -1,6 +1,6 @@
 /**
  * TRAVIAN WATCHMAN PRO - CONTENT SCRIPT
- * Version: 3.15 (Fix: Switched Alarm Editing to Prompts)
+ * Version: 3.33 (Updated: UI Tweaks)
  */
 
 // ==========================================
@@ -27,15 +27,9 @@ const generateServerTag = () => {
     host = host.replace(/^www\./, '').replace(/\.travian\.[a-z]+$/, '');
 
     const regionShorteners = {
-        'europe': 'eur',
-        'america': 'ame',
-        'arabia': 'ara',
-        'international': 'int',
-        'hispano': 'esp',
-        'nordic': 'nor',
-        'balkans': 'blk',
-        'asia': 'asi',
-        'com': '' 
+        'europe': 'eur', 'america': 'ame', 'arabia': 'ara',
+        'international': 'int', 'hispano': 'esp', 'nordic': 'nor',
+        'balkans': 'blk', 'asia': 'asi', 'com': '' 
     };
 
     const parts = host.split('.').map(part => {
@@ -59,52 +53,102 @@ const cleanCoords = (str) => str.replace(/[^\d|−-]/g, '').replace('−', '-');
 // HELPERS
 // ==========================================
 
-/**
- * Parses user input for duration.
- * Supports: 
- * - "1:30:00" -> 1h 30m
- * - "13:30" or "13.30" -> 13m 30s
- * - "15" -> 15m
- */
 function parseSmartDuration(input) {
     if (!input) return null;
     let str = input.toString().trim();
     
     if (str.includes(':') || str.includes('.')) {
-        // Handle H:M:S or M:S
         let parts = str.replace('.', ':').split(':').map(n => parseInt(n, 10) || 0);
-        
-        if (parts.length === 3) {
-            // H:M:S
-            return (parts[0] * 3600 * 1000) + (parts[1] * 60 * 1000) + (parts[2] * 1000);
-        }
-        if (parts.length === 2) {
-            // M:S
-            return (parts[0] * 60 * 1000) + (parts[1] * 1000);
-        }
+        if (parts.length === 3) return (parts[0] * 3600 * 1000) + (parts[1] * 60 * 1000) + (parts[2] * 1000);
+        if (parts.length === 2) return (parts[0] * 60 * 1000) + (parts[1] * 1000);
     }
     
-    // Fallback: Just a number = Minutes
     const num = parseFloat(str);
     if (!isNaN(num)) return num * 60 * 1000;
-    
     return null;
 }
 
 function formatDurationForPrompt(ms) {
-    // If negative (overdue), just show 0
     if (ms < 0) return "0";
-    
     const totalSec = Math.floor(ms / 1000);
     const h = Math.floor(totalSec / 3600);
     const m = Math.floor((totalSec % 3600) / 60);
     const s = totalSec % 60;
-    
-    if (h > 0) {
-        return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    }
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     if (s === 0) return `${m}`;
     return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function generateSmartBuildingName() {
+    const possibleHeaders = [
+        document.querySelector('.windowTitle'),
+        document.querySelector('#content .titleInHeader'),
+        document.querySelector('div.fluidHeading'),
+        document.querySelector('h1')
+    ];
+    const headerNode = possibleHeaders.find(el => el && el.innerText.trim().length > 0);
+    let rawName = headerNode ? headerNode.innerText.trim() : "";
+    if (!rawName) return "Reinforcements in";
+
+    const match = rawName.match(/^(.*?)\s(?:Level|Lvl|level)\s*(\d+)$/i);
+    if (match) {
+        const namePart = match[1].trim();
+        const currentLevel = parseInt(match[2], 10);
+        return `Queue ${namePart} Level ${currentLevel + 1}`;
+    }
+    return `Queue ${rawName}`;
+}
+
+function calculateDelayFromSmartText(text, node = null) {
+    if (node && node.getAttribute('value')) {
+        const seconds = parseInt(node.getAttribute('value'), 10);
+        if (!isNaN(seconds)) return seconds * 1000;
+    }
+
+    if (!text) return null;
+
+    let clean = text.toLowerCase()
+                    .replace(/in/g, '')
+                    .replace(/hrs\.?/g, '')
+                    .replace(/min\.?/g, '')
+                    .replace(/sec\.?/g, '')
+                    .replace(/,/g, '') 
+                    .trim();
+
+    const hmsMatch = clean.match(/^(\d{1,2})[:.](\d{1,2})[:.](\d{1,2})$/);
+    if (hmsMatch) {
+        const h = parseInt(hmsMatch[1], 10);
+        const m = parseInt(hmsMatch[2], 10);
+        const s = parseInt(hmsMatch[3], 10);
+        return (h * 3600 * 1000) + (m * 60 * 1000) + (s * 1000);
+    }
+
+    const timeMatch = clean.match(/(\d{1,2}):(\d{2})/);
+    const dateMatch = clean.match(/(\d{1,2})\.(\d{2})/);
+    
+    if (timeMatch) {
+        const now = new Date();
+        let targetDate = new Date();
+
+        if (dateMatch) {
+            const day = parseInt(dateMatch[1], 10);
+            const month = parseInt(dateMatch[2], 10) - 1; 
+            targetDate.setFullYear(now.getFullYear(), month, day);
+        }
+
+        targetDate.setHours(parseInt(timeMatch[1], 10), parseInt(timeMatch[2], 10), 0, 0);
+
+        if (!dateMatch && targetDate.getTime() <= now.getTime()) {
+            targetDate.setDate(targetDate.getDate() + 1);
+        } 
+        else if (dateMatch && targetDate.getTime() < (now.getTime() - 86400000)) {
+            targetDate.setFullYear(now.getFullYear() + 1);
+        }
+
+        return targetDate.getTime() - now.getTime();
+    }
+
+    return parseSmartDuration(clean);
 }
 
 function getStyledDisplayName(rawName, isRecurring) {
@@ -121,16 +165,13 @@ function getStyledDisplayName(rawName, isRecurring) {
     } else {
         const parts = cleanName.match(/^(.*?)(\s\(.*?\))(\s#\d+)?$/);
         if (parts) {
-            displayName = `${parts[1]}<span style="color: #9ca3af !important; font-weight: normal;">${parts[2]}</span>${parts[3] || ""}`;
+            displayName = `${parts[1]}<span style="color: #9ca3af !important; font-weight: normal;">${parts[2]}${parts[3] || ""}</span>`;
         }
     }
 
     displayName = displayName.replace(serverTag, '').trim(); 
     displayName = displayName.replace('⚠️', '<span class="danger-icon">⚠️</span>');
-    
-    if (isRecurring) { 
-        displayName += `<span class="recurring-indicator" title="Recurring Alarm">↺</span>`; 
-    }
+    if (isRecurring) displayName += `<span class="recurring-indicator" title="Recurring Alarm">↺</span>`; 
     
     return displayName;
 }
@@ -154,8 +195,8 @@ function scan() {
         const villageMap = scanVillages(); 
         const activeVillage = getActiveVillageName();
         const found = [];
-
         let matchedBuildingIds = null; 
+
         try {
             const scanResult = scanBuildings(activeVillage);
             if (scanResult !== null) {
@@ -166,9 +207,7 @@ function scan() {
 
         try {
             const heroStatuses = scanHero(activeVillage, villageMap);
-            if (heroStatuses && heroStatuses.length > 0) {
-                found.push(...heroStatuses); 
-            }
+            if (heroStatuses && heroStatuses.length > 0) found.push(...heroStatuses); 
         } catch (e) { console.error("Hero Scan Error:", e); }
 
         try {
@@ -181,58 +220,51 @@ function scan() {
             if (sidebarAttacks.length > 0) found.push(...sidebarAttacks);
         } catch (e) { console.error("Sidebar Scan Error:", e); }
 
-        if (matchedBuildingIds !== null) {
-            handleQueueCleanup(matchedBuildingIds, activeVillage);
-        }
-
-        if (found.length > 0) {
-            browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: found });
-        }
-
-        if (typeof scanResources === "function") scanResources(activeVillage);
+        if (matchedBuildingIds !== null) handleQueueCleanup(matchedBuildingIds, activeVillage);
+        if (found.length > 0) browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: found });
         
-    } catch (err) {
-        console.error("Watchman Main Loop Error:", err);
-    }
+    } catch (err) { console.error("Watchman Main Loop Error:", err); }
 }
 
 function scanSidebarAttacks() {
     const listEntries = document.querySelectorAll('.villageList .listEntry');
     if (!listEntries || listEntries.length === 0) return [];
 
-    let isUnderAttack = false;
-
-    for (const entry of listEntries) {
+    const attackedVillages = [];
+    listEntries.forEach(entry => {
         if (entry.classList.contains('attack')) {
-            isUnderAttack = true;
-            break; 
+            const nameNode = entry.querySelector('.name');
+            if (nameNode) attackedVillages.push(cleanText(nameNode.innerText));
         }
-    }
+    });
 
-    const alarmName = `⚠️ INCOMING ATTACKS! ${serverTag}`;
-
-    if (isUnderAttack) {
+    if (attackedVillages.length > 0) {
         noAttackConsecutiveScans = 0;
+        const namesStr = attackedVillages.join(', ');
+        const alarmName = `⚠️ ATTACK: ${namesStr} ${serverTag}`;
+
+        currentAlarms.forEach(a => {
+            if (a.name.startsWith('⚠️ ATTACK:') && a.name !== alarmName && a.name.includes(serverTag)) {
+                browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name });
+            }
+        });
+
         if (suppressedAttacks.has(alarmName)) return []; 
         const exists = currentAlarms.some(a => a.name === alarmName);
-        if (!exists) {
-            return [{
-                name: alarmName,
-                delay: 1000, 
-                customType: 'attack'
-            }];
-        }
+        if (!exists) return [{ name: alarmName, delay: 1000, customType: 'attack' }];
     } else {
         noAttackConsecutiveScans++;
         if (noAttackConsecutiveScans === 20) {
-            browser.runtime.sendMessage({ type: "ATTACK_CLEARED", name: alarmName });
+            currentAlarms.forEach(a => {
+                if ((a.name.startsWith('⚠️ ATTACK:') || a.name.startsWith('⚠️ INCOMING ATTACKS!')) && a.name.includes(serverTag)) {
+                    browser.runtime.sendMessage({ type: "ATTACK_CLEARED", name: a.name });
+                    browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name });
+                }
+            });
         }
     }
-
     return [];
 }
-
-// ... (Standard logic functions) ...
 
 function scanVillages() {
     const map = {};
@@ -273,11 +305,9 @@ function scanBuildings(activeVillage) {
         const delayValue = ((t.getAttribute('value') | 0) * 1000) + 1700;
         
         rawBuildings.push({
-            bName: bName, 
-            bLevel: bLevel,
+            bName: bName, bLevel: bLevel,
             baseName: `${bName} lvl ${bLevel} (${activeVillage}) ${serverTag}`,
-            delay: delayValue,
-            scheduledTime: now + delayValue
+            delay: delayValue, scheduledTime: now + delayValue
         });
     });
 
@@ -288,9 +318,7 @@ function scanBuildings(activeVillage) {
         if (!nameCounts[b.baseName]) nameCounts[b.baseName] = 0;
         nameCounts[b.baseName]++;
         let finalName = b.baseName;
-        if (nameCounts[b.baseName] > 1) {
-            finalName = `${b.baseName} #${nameCounts[b.baseName]}`;
-        }
+        if (nameCounts[b.baseName] > 1) finalName = `${b.baseName} #${nameCounts[b.baseName]}`;
         return { ...b, name: finalName };
     });
 
@@ -333,8 +361,7 @@ function handleQueueCleanup(matchedIds, activeVillage) {
         const vTag = `(${activeVillage})`;
         if (!a.name.includes(vTag) || !a.name.includes(serverTag)) return;
         if (matchedIds.has(a.id || a.name)) return;
-        const timeRemaining = a.scheduledTime - now;
-        if (timeRemaining > 10000) {
+        if ((a.scheduledTime - now) > 10000) {
             browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name });
         }
     });
@@ -353,7 +380,7 @@ function scanHero(activeVillage, villageMap) {
         const rawStatus = parent.querySelector('.text')?.innerText || "";
         const rawStatusLower = rawStatus.toLowerCase();
         
-        const delayValue = ((heroTimer.getAttribute('value') | 0) * 1000) - 2000;
+        const delayValue = ((heroTimer.getAttribute('value') | 0) * 1000) + 2000;
         const scheduledTime = Date.now() + delayValue;
         
         if (delayValue <= 0) return;
@@ -371,48 +398,33 @@ function scanHero(activeVillage, villageMap) {
         let actionLabel = "";
         let targetName = "";
 
-        if (rawStatusLower.includes("oasis")) {
-            actionLabel = "Going to Oasis";
-            targetName = originName;
-        } else if (rawStatusLower.includes("adventure")) {
-            actionLabel = "Going to Adventure";
-            targetName = originName;
-        } else if (rawStatusLower.includes("reinforce")) {
-            actionLabel = "Reinforcing";
-            targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName);
-        } else {
-            actionLabel = "Returning to";
-            targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName);
-        }
+        if (rawStatusLower.includes("oasis")) { actionLabel = "Going to Oasis"; targetName = originName; }
+        else if (rawStatusLower.includes("adventure")) { actionLabel = "Going to Adventure"; targetName = originName; }
+        else if (rawStatusLower.includes("reinforce")) { actionLabel = "Reinforcing"; targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName); }
+        else { actionLabel = "Returning to"; targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName); }
 
         const heroName = cleanText(`⚔️ ${actionLabel} | ${targetName} ${serverTag}`);
-        
-        const serverHeroExists = currentAlarms.some(a => 
-            a.name.includes("⚔️") && 
-            a.name.includes(serverTag) &&
-            Math.abs(a.scheduledTime - scheduledTime) < 30000 
-        );
+        const serverHeroExists = currentAlarms.some(a => a.name.includes("⚔️") && a.name.includes(serverTag) && Math.abs(a.scheduledTime - scheduledTime) < 30000);
 
         if (!serverHeroExists && !localTracked.has(heroName)) {
             localTracked.add(heroName);
             foundHeroes.push({ name: heroName, delay: delayValue });
         }
     });
-
     return foundHeroes;
 }
 
 function scanAttacks(activeVillage) {
     const p = new URLSearchParams(window.location.search);
-    if (p.get('gid') !== '16' || p.get('tt') !== '1' || p.get('filter') !== '1' || p.get('subfilters') !== '1') {
-        return [];
-    }
+    if (p.get('gid') !== '16' || p.get('tt') !== '1' || p.get('filter') !== '1' || p.get('subfilters') !== '1') return [];
     const buildDiv = document.getElementById('build');
     if (!buildDiv) return [];
+    
     const attacksOnScreen = [];
     const found = [];
     const now = Date.now();
     const timers = buildDiv.querySelectorAll('.timer, [id^="timer"]');
+    
     timers.forEach(t => {
         const row = t.closest('tr') || t.closest('.troop_details');
         if (!row) return;
@@ -426,24 +438,20 @@ function scanAttacks(activeVillage) {
             const baseName = cleanText(`⚠️${type} | ${targetStr} ${serverTag}`);
             const delayValue = ((t.getAttribute('value') | 0) * 1000) + 1700;
             if (delayValue > 0) {
-                attacksOnScreen.push({
-                    baseName: baseName,
-                    delay: delayValue,
-                    scheduledTime: now + delayValue
-                });
+                attacksOnScreen.push({ baseName: baseName, delay: delayValue, scheduledTime: now + delayValue });
             }
         }
     });
+    
     const groups = {};
-    attacksOnScreen.forEach(a => {
-        if (!groups[a.baseName]) groups[a.baseName] = [];
-        groups[a.baseName].push(a);
-    });
+    attacksOnScreen.forEach(a => { if (!groups[a.baseName]) groups[a.baseName] = []; groups[a.baseName].push(a); });
+    
     for (const baseName in groups) {
         let items = groups[baseName];
         const relevantAlarms = currentAlarms.filter(a => a.name === baseName || (a.name.startsWith(baseName) && a.name.includes('#')));
         const usedIndices = new Set();
         const claimedNames = new Set();
+        
         relevantAlarms.forEach(alarm => {
             const matchIdx = items.findIndex((item, idx) => !usedIndices.has(idx) && Math.abs(alarm.scheduledTime - item.scheduledTime) < 20000);
             if (matchIdx !== -1) {
@@ -452,6 +460,7 @@ function scanAttacks(activeVillage) {
                 found.push({ name: alarm.name, delay: items[matchIdx].delay });
             }
         });
+        
         const unmatchedItems = items.map((item, idx) => ({ item, idx })).filter(x => !usedIndices.has(x.idx)).sort((a, b) => a.item.delay - b.item.delay);
         unmatchedItems.forEach(entry => {
             const item = entry.item;
@@ -468,54 +477,64 @@ function scanAttacks(activeVillage) {
     return found;
 }
 
-// ... (UI Functions) ...
-
-function formatTimeLeft(ms) {
-    const s = Math.max(0, (ms / 1000) | 0);
-    const h = (s / 3600) | 0, m = ((s % 3600) / 60) | 0, sc = s % 60;
-    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sc.toString().padStart(2, '0')}` : `${m}:${sc.toString().padStart(2, '0')}`;
-}
-
+// ==========================================
+// SYNC STATE & UI REFRESH
+// ==========================================
 async function syncState(force = false) {
     if (!force && document.querySelector('.inline-editor')) return;
+    
+    // 1. Get Alarms & Sound Mode
     const res = await browser.runtime.sendMessage({ type: "GET_ACTIVE_ALARMS" });
     if (!res) return;
+
     let alarms = res.alarms || [];
     const now = Date.now();
     currentAlarms = alarms;
     localTracked = new Set(currentAlarms.map(a => a.name.replace(/\s#\d+$/, '')));
-    if (typeof muteBtn !== 'undefined' && muteBtn) muteBtn.innerText = res.isMuted ? "🔇" : "🔊";
-    
+
+    // 2. FAIL-SAFE ICON UPDATE
+    const btn = document.getElementById('audio-trigger-btn');
+    if (btn) {
+        const mode = res.soundMode || 'all';
+        if (mode === 'all') { btn.innerText = "🔊"; btn.style.opacity = "1"; }
+        else if (mode === 'attacks') { btn.innerText = "⚔️"; btn.style.opacity = "1"; }
+        else { btn.innerText = "🔇"; btn.style.opacity = "1"; }
+
+        const opts = document.querySelectorAll('.audio-option');
+        if (opts) {
+            opts.forEach(opt => {
+                if (opt.dataset.mode === mode) opt.classList.add('is-active-mode');
+                else opt.classList.remove('is-active-mode');
+            });
+        }
+    }
+
+    // 3. Sort & Rebuild List (PRIORITIZES PINNED ITEMS)
     currentAlarms.sort((a, b) => {
+        if (!!a.isPinned !== !!b.isPinned) return a.isPinned ? -1 : 1; // Pinned first
+
         const aDone = (a.scheduledTime - now) <= 0;
         const bDone = (b.scheduledTime - now) <= 0;
-        
         if (aDone !== bDone) return aDone ? -1 : 1; 
         
         if (aDone && bDone) {
-            const getTag = (s) => {
-                const m = s.match(/\[([^\]]+)\]\s*$/);
-                return m ? m[1] : "zzz";
-            };
+            const getTag = (s) => { const m = s.match(/\[([^\]]+)\]\s*$/); return m ? m[1] : "zzz"; };
             const tagA = getTag(a.name);
             const tagB = getTag(b.name);
             if (tagA !== tagB) return tagA.localeCompare(tagB);
 
-            const getVillage = (s) => {
+            const getVillage = (s) => { 
                 let clean = s.replace(/\[[^\]]+\]/g, '').trim(); 
                 const pMatch = clean.match(/\(([^)]+)\)/);
                 if (pMatch) return pMatch[1].trim(); 
                 if (clean.includes('|')) return clean.split('|')[1].trim(); 
                 return "ZZ_Global"; 
             };
-            
             const villA = getVillage(a.name);
             const villB = getVillage(b.name);
             if (villA !== villB) return villA.localeCompare(villB);
-
             return a.name.localeCompare(b.name);
         }
-
         if (a.scheduledTime !== b.scheduledTime) return a.scheduledTime - b.scheduledTime;
         return a.name.localeCompare(b.name);
     });
@@ -524,45 +543,38 @@ async function syncState(force = false) {
 
 function rebuildUI() {
     const existingNodes = new Map();
-    listContainer.querySelectorAll('.alarm-item').forEach(el => {
-        existingNodes.set(el.dataset.uid, el);
-    });
+    listContainer.querySelectorAll('.alarm-item').forEach(el => existingNodes.set(el.dataset.uid, el));
+    
     currentAlarms.forEach((a, index) => {
         const uid = a.id || a.name;
         let node = existingNodes.get(uid);
-        if (node && node.querySelector('.inline-editor')) {
-            node.remove();
-            node = null;
-        }
-        if (!node) {
-            node = createAlarmNode(a, uid);
-        } else {
+        if (node && node.querySelector('.inline-editor')) { node.remove(); node = null; }
+        
+        if (!node) node = createAlarmNode(a, uid);
+        else {
             const nameNode = node.querySelector('.n');
-            if (nameNode) {
-                nameNode.innerHTML = getStyledDisplayName(a.name, a.recurring > 0);
+            if (nameNode) nameNode.innerHTML = getStyledDisplayName(a.name, a.recurring > 0);
+            
+            const pinBtn = node.querySelector('.watchman-pin');
+            if (pinBtn) {
+                if (a.isPinned) pinBtn.classList.add('active-pin');
+                else pinBtn.classList.remove('active-pin');
             }
+            if (a.isPinned) node.classList.add('is-pinned-row');
+            else node.classList.remove('is-pinned-row');
         }
 
         const currentNodeAtIndex = listContainer.children[index];
         if (currentNodeAtIndex !== node) {
-            if (currentNodeAtIndex) {
-                listContainer.insertBefore(node, currentNodeAtIndex);
-            } else {
-                listContainer.appendChild(node);
-            }
+            if (currentNodeAtIndex) listContainer.insertBefore(node, currentNodeAtIndex);
+            else listContainer.appendChild(node);
         }
-        uiRefs.set(uid, { 
-            timeNode: node.querySelector('.t'), 
-            nameNode: node.querySelector('.n'), 
-            lastText: "" 
-        });
+        uiRefs.set(uid, { timeNode: node.querySelector('.t'), nameNode: node.querySelector('.n'), lastText: "" });
         existingNodes.delete(uid);
     });
     existingNodes.forEach(node => node.remove());
     if (currentAlarms.length === 0) {
-        if (!document.getElementById('empty-msg')) {
-            listContainer.innerHTML = '<div id="empty-msg" style="color:#777; font-style:italic; text-align:center; padding: 15px;">No active timers</div>';
-        }
+        if (!document.getElementById('empty-msg')) listContainer.innerHTML = '<div id="empty-msg" style="color:#777; font-style:italic; text-align:center; padding: 15px;">No active timers</div>';
     } else {
         const emptyMsg = document.getElementById('empty-msg');
         if (emptyMsg) emptyMsg.remove();
@@ -572,42 +584,55 @@ function rebuildUI() {
 function createAlarmNode(a, uniqueId) {
     const isCustom = a.name.startsWith('⭐');
     let extraClass = "";
-    if (isCustom) { extraClass = (a.customType === 'manual') ? "baby-pink" : "lean-purple"; } 
-    else if (a.name.includes('⚔️')) { extraClass = "hero-gold"; } 
-    else if (a.name.includes('⚠️')) { extraClass = "res-alert"; }
+    if (isCustom) extraClass = (a.customType === 'manual') ? "baby-pink" : "lean-purple";
+    else if (a.name.includes('⚔️')) extraClass = "hero-gold";
+    else if (a.name.includes('⚠️')) extraClass = "res-alert";
     
+    const pinnedClass = a.isPinned ? "is-pinned-row" : "";
+    const pinActive = a.isPinned ? "active-pin" : "";
+
     const displayName = getStyledDisplayName(a.name, a.recurring > 0);
-    
     const editBtn = isCustom ? `<span class="watchman-edit" title="Edit" data-uid="${uniqueId}">✎</span>` : '';
+    
     const div = document.createElement('div');
-    div.className = 'alarm-item';
+    div.className = `alarm-item ${pinnedClass}`;
     div.dataset.uid = uniqueId;
     div.innerHTML = `
         <div class="row-wrapper">
+            <span class="watchman-pin ${pinActive}" title="Pin to top" data-uid="${uniqueId}">📌</span>
             <div class="trigger">
                 <div class="name-container"><div class="n ${extraClass}" style="color:#fff; font-weight:bold; font-size:11px;">${displayName}</div></div>
                 <div class="t">--:--</div>
             </div>
-            ${editBtn}
-            <span class="watchman-del" title="Delete" data-uid="${uniqueId}">🗑️</span>
+            <div class="action-group">
+                ${editBtn}
+                <span class="watchman-del" title="Delete" data-uid="${uniqueId}">🗑️</span>
+            </div>
         </div>`;
     setupAlarmListeners(div, a, uniqueId);
     return div;
 }
 
 function setupAlarmListeners(node, a, uniqueId) {
+    const pinBtn = node.querySelector('.watchman-pin');
+    if (pinBtn) {
+        pinBtn.onclick = (e) => {
+            e.stopPropagation();
+            pinBtn.classList.toggle('active-pin');
+            node.classList.toggle('is-pinned-row');
+            browser.runtime.sendMessage({ type: "TOGGLE_PIN", id: a.id }).then(() => syncState(true));
+        };
+    }
+
     const editBtn = node.querySelector('.watchman-edit');
     if (editBtn) {
         editBtn.onclick = (e) => {
             e.stopPropagation();
-            
-            // 1. Prepare Content for Prompts
             let currentTag = serverTag;
             const tagMatch = a.name.match(/\[[^\]]+\]/);
             if (tagMatch) currentTag = tagMatch[0];
 
             let middleContent = a.name.replace(currentTag, '').replace(/^⭐\s*/, '').trim();
-            
             let villageContext = "";
             let nameToEdit = middleContent;
 
@@ -623,39 +648,25 @@ function setupAlarmListeners(node, a, uniqueId) {
                 }
             }
 
-            // 2. Prompt for Name
             const newNameVal = prompt("Edit Name:", nameToEdit);
-            if (newNameVal === null) return; // Cancelled
+            if (newNameVal === null) return; 
 
-            // 3. Prompt for Time
             const currentDurationStr = formatDurationForPrompt(a.scheduledTime - Date.now());
             const newTimeStr = prompt("Edit Time Remaining (e.g. 15, 1:30):", currentDurationStr);
-            if (newTimeStr === null) return; // Cancelled
+            if (newTimeStr === null) return; 
 
-            // 4. Process & Save
             let finalBaseName = newNameVal.trim() || nameToEdit;
-            if (villageContext) {
-                finalBaseName = `${finalBaseName} | ${villageContext}`;
-            }
+            if (villageContext) finalBaseName = `${finalBaseName} | ${villageContext}`;
 
             const finalName = `⭐ ${finalBaseName} ${currentTag}`;
             const newDelay = parseSmartDuration(newTimeStr);
             
-            // If new time is invalid or same, don't change time. If changed, we update.
-            // Note: If newDelay is valid, it resets the timer start from NOW.
-            
             if (newNameVal !== nameToEdit || (newDelay !== null)) {
-                browser.runtime.sendMessage({ 
-                    type: "EDIT_ALARM", 
-                    id: a.id, 
-                    newName: finalName, 
-                    newDelay: newDelay 
-                }).then(() => syncState(true));
+                browser.runtime.sendMessage({ type: "EDIT_ALARM", id: a.id, newName: finalName, newDelay: newDelay }).then(() => syncState(true));
             }
         };
     }
     
-    // Deletion Logic
     node.querySelector('.trigger').onclick = () => {
         if (node.querySelector('.inline-editor')) return;
         const now = Date.now();
@@ -666,22 +677,16 @@ function setupAlarmListeners(node, a, uniqueId) {
                 if (isDone) browser.runtime.sendMessage({ type: "STOP_SOUND_ONLY" }); 
                 silencedAlarms.add(uniqueId); 
                 syncState(); 
-                if (!isDone) {
-                    setTimeout(() => { if (silencedAlarms.has(uniqueId)) { silencedAlarms.delete(uniqueId); syncState(); } }, 5000);
-                }
+                if (!isDone) setTimeout(() => { if (silencedAlarms.has(uniqueId)) { silencedAlarms.delete(uniqueId); syncState(); } }, 5000);
             } else {
-                if (isRecurring) {
-                    browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: a.name, delay: a.recurring, recurring: a.recurring, customType: a.customType }] });
-                }
+                if (isRecurring) browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: a.name, delay: a.recurring, recurring: a.recurring, customType: a.customType }] });
                 browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name }).then(syncState);
             }
         }
     };
     node.querySelector('.watchman-del').onclick = (e) => { 
         e.stopPropagation(); 
-        if (a.customType === 'attack') {
-            suppressedAttacks.add(a.name);
-        }
+        if (a.customType === 'attack') suppressedAttacks.add(a.name);
         browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name }).then(syncState); 
     };
 }
@@ -699,7 +704,7 @@ function tick() {
         const isSilenced = silencedAlarms.has(uniqueId);
         if (s === 0) {
             newText = "DONE"; 
-            if (ref.lastText !== newText) { ref.timeNode.innerText = newText; }
+            if (ref.lastText !== newText) ref.timeNode.innerText = newText;
             if (isSilenced) { 
                 if (ref.timeNode.style.color !== "rgb(136, 136, 136)") {
                     ref.timeNode.style.color = "#888"; 
@@ -717,27 +722,13 @@ function tick() {
         } else {
             const h = (s / 3600) | 0, m = ((s % 3600) / 60) | 0, sc = s % 60;
             newText = h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sc.toString().padStart(2, '0')}` : `${m}:${sc.toString().padStart(2, '0')}`;
-            if (ref.lastText !== newText) { ref.timeNode.innerText = newText; }
+            if (ref.lastText !== newText) ref.timeNode.innerText = newText;
             if (isSilenced) { if (ref.timeNode.style.color !== "rgb(136, 136, 136)") ref.timeNode.style.color = "#888"; } 
             else { if (ref.timeNode.style.color !== "rgb(113, 208, 0)") ref.timeNode.style.color = "#71d000"; }
         }
         ref.lastText = newText;
     });
 }
-
-const submitCustomAlarm = () => {
-    const hrs = parseInt(hrInp.value, 10) || 0;
-    const mins = parseInt(minInp.value, 10) || 0;
-    const secs = parseInt(secInp.value, 10) || 0;
-    const totalMs = (hrs * 3600 * 1000) + (mins * 60 * 1000) + (secs * 1000);
-    if (!isNaN(totalMs) && totalMs > 0) {
-        const vName = getActiveVillageName();
-        browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${nameInp.value.trim() || "Alarm"} | ${vName} ${serverTag}`, delay: totalMs, customType: 'manual' }] }).then(() => {
-            nameInp.value = ""; hrInp.value = ""; minInp.value = ""; secInp.value = "";
-            inputRow.style.display = 'none'; toggleBtn.innerText = '+'; syncState();
-        });
-    } else { inputRow.style.display = 'none'; toggleBtn.innerText = '+'; }
-};
 
 function loadShortcuts() {
     browser.storage.local.get({ watchmanShortcuts: [], watchmanHasInitialized: false }).then(async res => {
@@ -753,7 +744,6 @@ function loadShortcuts() {
             const opt = document.createElement('div');
             opt.className = 'dropdown-option clickable';
             const activeClass = s.isRecurring ? 'is-active' : '';
-            
             const durationMs = s.ms || (s.minutes * 60 * 1000);
             
             opt.innerHTML = `<span>${s.label}</span><div class="shortcut-actions"><span class="recurring-toggle ${activeClass}" title="Toggle Recurring">↺</span><span class="edit-shortcut" title="Edit Shortcut">✎</span><span class="remove-shortcut" title="Delete Shortcut">✕</span></div>`;
@@ -771,27 +761,19 @@ function loadShortcuts() {
 async function editShortcut(oldLabel, oldMs) {
     const currentDurationStr = formatDurationForPrompt(oldMs);
     const newDurationStr = prompt("Edit duration (e.g. 15, 13:30, 13.30):", currentDurationStr);
-    
     const newMs = parseSmartDuration(newDurationStr);
     if (newMs === null) return;
-
     const newLabel = prompt("Edit label:", oldLabel);
     if (!newLabel) return;
-    
     const res = await browser.storage.local.get({ watchmanShortcuts: [] });
-    const newList = res.watchmanShortcuts.map(s => { 
-        if (s.label === oldLabel) { 
-            return { ...s, label: newLabel, ms: newMs, minutes: undefined }; 
-        } 
-        return s; 
-    });
+    const newList = res.watchmanShortcuts.map(s => { if (s.label === oldLabel) return { ...s, label: newLabel, ms: newMs, minutes: undefined }; return s; });
     await browser.storage.local.set({ watchmanShortcuts: newList });
     loadShortcuts();
 }
 
 async function toggleRecurringShortcut(label) {
     const res = await browser.storage.local.get({ watchmanShortcuts: [] });
-    const newList = res.watchmanShortcuts.map(s => { if (s.label === label) { return { ...s, isRecurring: !s.isRecurring }; } return s; });
+    const newList = res.watchmanShortcuts.map(s => { if (s.label === label) return { ...s, isRecurring: !s.isRecurring }; return s; });
     await browser.storage.local.set({ watchmanShortcuts: newList });
     loadShortcuts();
 }
@@ -800,7 +782,6 @@ async function handleDropdownAction(val, label, isRecurring) {
     if (val === "CREATE_NEW") {
         const durStr = prompt("Enter duration (e.g. 15, 13:30, 13.30):");
         const ms = parseSmartDuration(durStr);
-        
         if (ms !== null) {
             const defaultLabel = formatDurationForPrompt(ms) + "m";
             const labelStr = prompt("Enter label:", defaultLabel);
@@ -813,7 +794,6 @@ async function handleDropdownAction(val, label, isRecurring) {
         }
         return;
     }
-    
     const vName = getActiveVillageName();
     browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${label} | ${vName} ${serverTag}`, delay: val, recurring: isRecurring ? val : 0 }] }).then(() => syncState());
 }
@@ -826,38 +806,40 @@ async function deleteShortcut(label) {
 }
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === "PARSE_CONTEXT_ALARM") {
-        handleContextParser(msg.text);
+    if (msg.type === "OPEN_CONTEXT_ADD") {
+        let prefilled = generateSmartBuildingName().replace(/,/g, '').replace(/\s+/g, ' ').trim();
+        setTimeout(() => {
+            const name = prompt("Enter Alarm Name:", prefilled);
+            if (!name) return;
+            let text = msg.selectionText;
+            let sourceNode = null;
+            if (!text) { sourceNode = document.querySelector('.window .timer, #content .timer, .buildDuration .timer'); if (sourceNode) text = sourceNode.innerText; }
+            let d = calculateDelayFromSmartText(text, sourceNode);
+            if (d === null) { const t = prompt("Could not auto-detect time. Enter duration (e.g. 15, 1:30):"); if (t) d = parseSmartDuration(t); }
+            if (d !== null && d > 0) {
+                browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${name} | ${getActiveVillageName()} ${serverTag}`, delay: d - 5000, customType: 'manual' }] }).then(() => syncState(true));
+            }
+        }, 50);
     }
 });
 
 function handleContextParser(text) {
     if (!text) return;
-    
-    const dateMatch = text.match(/(\d{1,2})\.(\d{1,2})\./);
-    const timeMatch = text.match(/(\d{1,2}):(\d{1,2})/);
-    
-    if (dateMatch && timeMatch) {
-        const d = new Date();
-        d.setDate(parseInt(dateMatch[1], 10));
-        d.setMonth(parseInt(dateMatch[2], 10) - 1);
-        d.setHours(parseInt(timeMatch[1], 10));
-        d.setMinutes(parseInt(timeMatch[2], 10));
-        d.setSeconds(0);
-        
-        if (d.getTime() < Date.now()) {
-            d.setFullYear(d.getFullYear() + 1);
-        }
-        
-        const delay = d.getTime() - Date.now();
+    const timeMatch = text.match(/(\d{1,2})[:.](\d{1,2})/);
+    if (timeMatch) {
+        const dateMatch = text.match(/(\d{1,2})\.(\d{1,2})\./);
+        const now = new Date();
+        let targetDate = new Date();
+        if (dateMatch) targetDate.setFullYear(now.getFullYear(), parseInt(dateMatch[2], 10) - 1, parseInt(dateMatch[1], 10));
+        const hrs = parseInt(timeMatch[1], 10);
+        const mins = parseInt(timeMatch[2], 10);
+        targetDate.setHours(hrs, mins, 0, 0);
+        if (!dateMatch && targetDate.getTime() <= now.getTime()) targetDate.setDate(targetDate.getDate() + 1);
+        else if (dateMatch && targetDate.getTime() < (now.getTime() - 86400000)) targetDate.setFullYear(now.getFullYear() + 1);
+        const delay = targetDate.getTime() - now.getTime();
         if (delay > 0) {
             const vName = getActiveVillageName();
-            const alarmName = `⭐ Resources | ${vName} ${serverTag}`;
-            
-            browser.runtime.sendMessage({ 
-                type: "REFRESH_ALARMS", 
-                buildings: [{ name: alarmName, delay: delay, customType: 'manual' }] 
-            }).then(() => syncState());
+            browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ Resources | ${vName} ${serverTag}`, delay: delay, customType: 'manual' }] }).then(() => syncState(true));
         }
     }
 }
@@ -875,52 +857,56 @@ function createWidget() {
     div.id = 'travian-timer-widget';
     div.innerHTML = WIDGET_HTML;
     document.body.appendChild(div);
-    const dropdownBtn = div.querySelector('#dropdown-trigger-btn');
-    const dropdownMenu = div.querySelector('#custom-dropdown-menu');
     const minBtn = div.querySelector('#minimize-btn');
-    const inputRow = div.querySelector('#input-row');
     const toggleBtn = div.querySelector('#toggle-input');
-    const nameInp = div.querySelector('#cust-name');
-    const hrInp = div.querySelector('#cust-hr');
-    const minInp = div.querySelector('#cust-min');
-    const secInp = div.querySelector('#cust-sec');
-    minBtn.onclick = () => { div.classList.toggle('is-minimized'); minBtn.innerText = div.classList.contains('is-minimized') ? '▢' : '—'; };
-    dropdownBtn.onclick = (e) => { e.stopPropagation(); dropdownMenu.style.display = dropdownMenu.style.display === 'block' ? 'none' : 'block'; };
-    document.addEventListener('click', () => { if(dropdownMenu) dropdownMenu.style.display = 'none'; });
-    div.querySelector('#create-new-trigger').onclick = () => handleDropdownAction("CREATE_NEW", "");
-    toggleBtn.onclick = () => { if (inputRow.style.display === 'flex') { submitCustomAlarm(); } else { inputRow.style.display = 'flex'; toggleBtn.innerText = '✓'; nameInp.focus(); } };
-    
-    // --- LOCAL SUBMIT FUNCTION WITH CORRECT SCOPE ---
-    const submitLocalAlarm = () => {
-        const hrs = parseInt(hrInp.value, 10) || 0;
-        const mins = parseInt(minInp.value, 10) || 0;
-        const secs = parseInt(secInp.value, 10) || 0;
-        const totalMs = (hrs * 3600 * 1000) + (mins * 60 * 1000) + (secs * 1000);
-        if (!isNaN(totalMs) && totalMs > 0) {
-            const vName = getActiveVillageName();
-            browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: `⭐ ${nameInp.value.trim() || "Alarm"} | ${vName} ${serverTag}`, delay: totalMs, customType: 'manual' }] }).then(() => {
-                nameInp.value = ""; hrInp.value = ""; minInp.value = ""; secInp.value = "";
-                inputRow.style.display = 'none'; toggleBtn.innerText = '+'; syncState();
-            });
-        } else { inputRow.style.display = 'none'; toggleBtn.innerText = '+'; }
-    };
+    const listContainer = div.querySelector('#timer-list');
+    const presetBtn = div.querySelector('#dropdown-trigger-btn');
+    const presetMenu = div.querySelector('#custom-dropdown-menu');
+    const audioBtn = div.querySelector('#audio-trigger-btn');
+    const audioMenu = div.querySelector('#audio-dropdown-menu');
 
-    [nameInp, hrInp, minInp, secInp].forEach(input => { 
-        input.addEventListener('keydown', (e) => { 
-            if (e.key === 'Enter') submitLocalAlarm(); 
-        }); 
+    minBtn.onclick = () => { div.classList.toggle('is-minimized'); minBtn.innerText = div.classList.contains('is-minimized') ? '▢' : '—'; };
+    presetBtn.onclick = (e) => { e.stopPropagation(); if (audioMenu) audioMenu.style.display = 'none'; presetMenu.style.display = presetMenu.style.display === 'block' ? 'none' : 'block'; };
+    div.querySelector('#create-new-trigger').onclick = () => handleDropdownAction("CREATE_NEW", "");
+    audioBtn.onclick = (e) => { e.stopPropagation(); if (presetMenu) presetMenu.style.display = 'none'; audioMenu.style.display = audioMenu.style.display === 'block' ? 'none' : 'block'; };
+    div.querySelectorAll('.audio-option').forEach(opt => {
+        opt.onclick = (e) => {
+            e.stopPropagation();
+            const mode = opt.dataset.mode;
+            const btn = document.getElementById('audio-trigger-btn');
+            if (btn) {
+                if (mode === 'all') btn.innerText = "🔊";
+                else if (mode === 'attacks') btn.innerText = "⚔️";
+                else btn.innerText = "🔇";
+                div.querySelectorAll('.audio-option').forEach(o => o.classList.remove('is-active-mode'));
+                opt.classList.add('is-active-mode');
+            }
+            browser.runtime.sendMessage({ type: "SET_SOUND_MODE", mode: mode }).then(() => syncState());
+            audioMenu.style.display = 'none';
+        };
     });
-    
+    document.addEventListener('click', () => { if(presetMenu) presetMenu.style.display = 'none'; if(audioMenu) audioMenu.style.display = 'none'; });
+    toggleBtn.onclick = () => {
+        const nameVal = prompt("Enter Alarm Name:");
+        if (!nameVal) return;
+        const timeVal = prompt("Enter Duration (e.g. 15, 1:30, 0:45:00):");
+        if (!timeVal) return;
+        let delay = parseSmartDuration(timeVal);
+        if (delay === null) { delay = calculateDelayFromSmartText(timeVal); }
+        if (delay !== null && delay > 0) {
+            const vName = getActiveVillageName();
+            const finalName = `⭐ ${nameVal} | ${vName} ${serverTag}`;
+            browser.runtime.sendMessage({ type: "REFRESH_ALARMS", buildings: [{ name: finalName, delay: delay, customType: 'manual' }] }).then(() => syncState());
+        } else { alert("Invalid time format."); }
+    };
     const clearBtn = div.querySelector('#clear-all');
     clearBtn.onclick = async () => { if (currentAlarms.length === 0) return; if (confirm("Clear all active timers?")) { const deletePromises = currentAlarms.map(a => browser.runtime.sendMessage({ type: "DELETE_ALARM", name: a.name })); await Promise.all(deletePromises); silencedAlarms.clear(); syncState(); } };
-    const muteBtn = div.querySelector('#mute-toggle');
-    muteBtn.onclick = () => { browser.runtime.sendMessage({ type: "TOGGLE_MUTE" }).then(res => { if (res) muteBtn.innerText = res.isMuted ? "🔇" : "🔊"; }); };
-    
-    return { timerWidget: div, listContainer: div.querySelector('#timer-list'), inputRow, toggleBtn, nameInp, hrInp, minInp, secInp, muteBtn };
+    return { timerWidget: div, listContainer, toggleBtn, audioBtn };
 }
 
+// REDUCED PADDING TO 5PX
 const WIDGET_HTML = `
-    <div style="padding: 10px; border-bottom: 1px solid #444; background: rgba(20, 20, 20, 0.95); border-radius: 8px 8px 0 0;">
+    <div style="padding: 5px; border-bottom: 1px solid #444; background: rgba(20, 20, 20, 0.95); border-radius: 8px 8px 0 0;">
         <div class="header-controls">
             <button id="minimize-btn" class="add-btn" title="Minimize">—</button>
             <button id="clear-all" class="add-btn" title="Clear All">🗑️</button>
@@ -932,19 +918,20 @@ const WIDGET_HTML = `
                     <div class="dropdown-option clickable new-btn" id="create-new-trigger">+ New</div>
                 </div>
             </div>
-            <button id="toggle-input" class="add-btn">+</button>
-            <span id="mute-toggle" style="cursor: pointer; font-size: 14px;">🔊</span>
-        </div>
-        <div id="input-row">
-            <input type="text" id="cust-name" class="custom-input" placeholder="Name" style="width: 60px;">
-            <input type="number" id="cust-hr" class="custom-input" placeholder="H" style="width: 24px;">
-            <input type="number" id="cust-min" class="custom-input" placeholder="M" style="width: 24px;">
-            <input type="number" id="cust-sec" class="custom-input" placeholder="S" style="width: 24px;">
+            <button id="toggle-input" class="add-btn" title="Add Custom Alarm">+</button>
+            <div id="audio-dropdown-container">
+                <div id="audio-trigger-btn" title="Sound Settings">🔊</div>
+                <div id="audio-dropdown-menu">
+                    <div class="audio-option" data-mode="all"><span>🔊</span> All Sounds</div>
+                    <div class="audio-option" data-mode="attacks"><span>⚔️</span> Attacks Only</div>
+                    <div class="audio-option" data-mode="none"><span>🔇</span> Mute All</div>
+                </div>
+            </div>
         </div>
     </div>
-    <div id="timer-list" style="padding: 5px 10px; font-size: 10px; color: #ccc; max-height: 380px; overflow-y: scroll; background: rgba(30, 30, 30, 0.9); border-radius: 0 0 8px 8px;"></div>
+    <div id="timer-list" style="padding: 0 10px; font-size: 10px; color: #ccc; max-height: 380px; overflow-y: scroll; background: rgba(30, 30, 30, 0.9); border-radius: 0 0 8px 8px;"></div>
 `;
 
-const { timerWidget, listContainer, inputRow, toggleBtn, nameInp, hrInp, minInp, secInp, muteBtn } = createWidget();
+const { timerWidget, listContainer, toggleBtn, audioBtn } = createWidget();
 loadShortcuts();
 startLoops();
