@@ -1,6 +1,6 @@
 /**
  * TRAVIAN WATCHMAN PRO - CONTENT SCRIPT
- * Version: 3.33 (Updated: UI Tweaks)
+ * Version: 3.37 (Fixed & Complete)
  */
 
 // ==========================================
@@ -403,8 +403,10 @@ function scanHero(activeVillage, villageMap) {
         else if (rawStatusLower.includes("reinforce")) { actionLabel = "Reinforcing"; targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName); }
         else { actionLabel = "Returning to"; targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName); }
 
-        const heroName = cleanText(`⚔️ ${actionLabel} | ${targetName} ${serverTag}`);
-        const serverHeroExists = currentAlarms.some(a => a.name.includes("⚔️") && a.name.includes(serverTag) && Math.abs(a.scheduledTime - scheduledTime) < 30000);
+        // --- WRAPPED ICON FOR CSS POSITIONING ---
+        const heroName = `<span class="hero-icon">⚔️</span> ${cleanText(`${actionLabel} | ${targetName}`)} ${serverTag}`;
+        
+        const serverHeroExists = currentAlarms.some(a => a.name.includes(actionLabel) && a.name.includes(serverTag) && Math.abs(a.scheduledTime - scheduledTime) < 30000);
 
         if (!serverHeroExists && !localTracked.has(heroName)) {
             localTracked.add(heroName);
@@ -599,6 +601,9 @@ function createAlarmNode(a, uniqueId) {
     div.dataset.uid = uniqueId;
     div.innerHTML = `
         <div class="row-wrapper">
+            <div class="pin-hover-zone"></div>
+            <div class="right-hover-zone"></div>
+            
             <span class="watchman-pin ${pinActive}" title="Pin to top" data-uid="${uniqueId}">📌</span>
             <div class="trigger">
                 <div class="name-container"><div class="n ${extraClass}" style="color:#fff; font-weight:bold; font-size:11px;">${displayName}</div></div>
@@ -614,6 +619,7 @@ function createAlarmNode(a, uniqueId) {
 }
 
 function setupAlarmListeners(node, a, uniqueId) {
+    // Pin Listener
     const pinBtn = node.querySelector('.watchman-pin');
     if (pinBtn) {
         pinBtn.onclick = (e) => {
@@ -667,7 +673,8 @@ function setupAlarmListeners(node, a, uniqueId) {
         };
     }
     
-    node.querySelector('.trigger').onclick = () => {
+    // Consolidated Click Logic
+    const handleTriggerClick = () => {
         if (node.querySelector('.inline-editor')) return;
         const now = Date.now();
         const isDone = (a.scheduledTime - now) <= 0;
@@ -684,6 +691,17 @@ function setupAlarmListeners(node, a, uniqueId) {
             }
         }
     };
+
+    const trigger = node.querySelector('.trigger');
+    if (trigger) trigger.onclick = handleTriggerClick;
+    
+    const leftZone = node.querySelector('.pin-hover-zone');
+    if (leftZone) leftZone.onclick = handleTriggerClick;
+    
+    // New Right Zone Click Handler
+    const rightZone = node.querySelector('.right-hover-zone');
+    if (rightZone) rightZone.onclick = handleTriggerClick;
+
     node.querySelector('.watchman-del').onclick = (e) => { 
         e.stopPropagation(); 
         if (a.customType === 'attack') suppressedAttacks.add(a.name);

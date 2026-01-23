@@ -1,6 +1,6 @@
 /* =========================================
    TRAVIAN WATCHMAN PRO - CONTENT STYLES
-   Version: 3.33 (Updated: Hidden Pin Logic)
+   Version: 3.39 (Fixed: Zone Detection Z-Index)
    ========================================= */
 
 /* -----------------------------------------
@@ -88,8 +88,8 @@
    ----------------------------------------- */
 #timer-list { 
     padding: 0 10px; 
-    font-size: 10px; color: #ccc; 
-    max-height: 380px; overflow-y: scroll; 
+    font-size: 11px; color: #ccc; 
+    max-height: 420px; overflow-y: scroll; 
     background: rgba(30, 30, 30, 0.9); border-radius: 0 0 8px 8px;
     -ms-overflow-style: none !important; scrollbar-width: none !important; 
 }
@@ -106,56 +106,83 @@
 }
 
 /* -----------------------------------------
-   ROW LAYOUT & PINNING
+   ROW LAYOUT & ZONES
    ----------------------------------------- */
 .row-wrapper { 
     display: flex; 
     align-items: center; 
     justify-content: space-between; 
     width: 100%; 
+    position: relative; 
 }
 
-/* PIN BUTTON (Hidden by default) */
+/* LEFT HOVER ZONE (25%) */
+/* Z-Index increased to 16 to sit above the Trigger Text (15) */
+.pin-hover-zone {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 25%; 
+    z-index: 16; 
+    cursor: pointer; 
+}
+
+/* RIGHT HOVER ZONE (25%) */
+/* Z-Index increased to 16 to sit above the Trigger Text (15) */
+.right-hover-zone {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 25%; 
+    z-index: 16; 
+    cursor: pointer; 
+}
+
+/* PIN BUTTON (Left Side) */
+/* Z-Index 20 keeps it clickable above the zone */
 .watchman-pin {
     font-size: 13px;
     cursor: pointer;
     flex-shrink: 0;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    
-    /* DEFAULT STATE: HIDDEN */
+    position: relative;
+    z-index: 20; 
     width: 0;
     opacity: 0;
     margin: 0;
     overflow: hidden;
     white-space: nowrap;
+    top: 0px;    
+    left: 0px;   
 }
 
-/* REVEAL ONLY ON HOVER (Even if pinned) */
-.alarm-item:hover .watchman-pin {
+/* Reveal Pin on LEFT Zone Hover */
+.pin-hover-zone:hover ~ .watchman-pin,
+.watchman-pin:hover {
     width: auto; 
-    opacity: 0.3; /* Dim by default on hover */
-    margin-right: 2px;
-    margin-left: 0px;
+    opacity: 0.3; 
+    margin-right: -2px;
 }
 
-/* IF PINNED AND REVEALED: Make it Green and Opaque */
-.alarm-item:hover .watchman-pin.active-pin {
+.pin-hover-zone:hover ~ .watchman-pin.active-pin,
+.watchman-pin:hover.active-pin {
     opacity: 1 !important; 
     color: #71d000; 
     text-shadow: 0 0 5px rgba(113, 208, 0, 0.4);
 }
 
-/* HOVERING THE ICON ITSELF */
 .watchman-pin:hover { 
     opacity: 1 !important; 
     transform: scale(1.1); 
 }
 
-/* Pinned Row Background Indicator */
 .is-pinned-row {
     background: linear-gradient(90deg, rgba(113, 208, 0, 0.08) 0%, transparent 100%);
     border-left: 2px solid #71d000;
-    padding-left: 3px !important;
+    margin-left: -4px !important;
+    margin-top: 2px;
 }
 
 /* TRIGGER AREA */
@@ -166,10 +193,21 @@
     justify-content: space-between; 
     align-items: center; 
     cursor: pointer; 
+    position: relative;
+    z-index: 15; 
 }
 
-.name-container { flex: 1; margin-right: 8px; padding-left: 2px; word-break: break-word; overflow: visible; }
-.n { display: block; white-space: normal; line-height: 1.2; padding-left: 2px; transition: all 0.3s ease; }
+.name-container { 
+    flex: 1; 
+    margin-right: 6px; 
+    padding-left: 5px; 
+    word-break: break-word; 
+    overflow: visible; 
+    margin-top: 0px;  
+}
+
+.hero-icon { position: relative; top: 1px; left: 0px; margin-right: 4px; display: inline-block; }
+.n { display: block; white-space: normal; line-height: 1.2; transition: all 0.3s ease; position: relative; top: 0px; left: 0px; padding-left: 2px; }
 
 .t { 
     color: #71d000; font-weight: bold; font-size: 13px; font-family: monospace; 
@@ -184,20 +222,34 @@
     align-items: center;
     margin-left: 5px;
     flex-shrink: 0;
+    position: relative;
+    /* Z-Index 30 ensures buttons are clickable above Right Zone (16) */
+    z-index: 30; 
 }
 
 .watchman-del { 
     transition: all 0.1s ease-in-out; opacity: 0.4; cursor: pointer; 
-    font-size: 14px; padding-left: 8px; 
+    font-size: 14px; padding-left: 3px; 
 }
-.watchman-del:hover { opacity: 1 !important; transform: scale(1.3); filter: brightness(1.5); }
+.watchman-del:hover { opacity: 1 !important; transform: scale(1.2); filter: brightness(1.5); }
 
+/* EDIT BUTTON */
 .watchman-edit { 
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer; font-size: 14px; color: #fff;
     width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
 }
-.alarm-item:hover .watchman-edit { width: auto; opacity: 0.4; margin-left: 9px; pointer-events: auto; }
+
+/* REVEAL EDIT BUTTON - ONLY ON RIGHT ZONE HOVER */
+.right-hover-zone:hover ~ .action-group .watchman-edit,
+.action-group:hover .watchman-edit {
+    width: auto; 
+    opacity: 0.25; 
+    margin-left: 8px; 
+    pointer-events: auto; 
+    margin-right: 1px; 
+}
+
 .watchman-edit:hover { opacity: 1 !important; transform: scale(1.3); color: #4ade80; }
 
 .danger-icon { font-size: 13px; vertical-align: middle; margin-right: 0.7px; position: relative; bottom: 3.61px; }
@@ -211,30 +263,17 @@
 #custom-dropdown-container { left: 3px; }
 #audio-dropdown-container { margin-left: 5px; left: -2px; }
 
-#dropdown-trigger-btn {
-    width: 32px; background-color: #9333ea !important;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='yellow'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>");
-    background-repeat: no-repeat; background-position: center; background-size: 14px;
-    border-color: #9333ea !important; box-shadow: 0 0 5px 1px rgba(147, 51, 234, 0.8) !important;
-}
+#dropdown-trigger-btn { width: 32px; background-color: #9333ea !important; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='yellow'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>"); background-repeat: no-repeat; background-position: center; background-size: 14px; border-color: #9333ea !important; box-shadow: 0 0 5px 1px rgba(147, 51, 234, 0.8) !important; }
 #dropdown-trigger-btn:hover { box-shadow: 0 0 8px 2px rgba(147, 51, 234, 1) !important; filter: brightness(1.1); }
 
 #audio-trigger-btn { cursor: pointer; font-size: 16px; width: 24px; text-align: center; transition: transform 0.2s; user-select: none; }
 #audio-trigger-btn:hover { transform: scale(1.1); }
 
-#custom-dropdown-menu, #audio-dropdown-menu {
-    display: none; position: absolute; top: 24px; right: 0; 
-    background-color: #1a1a1a; min-width: 110px; z-index: 10000;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.8); overflow: hidden; border-radius: 6px;
-}
+#custom-dropdown-menu, #audio-dropdown-menu { display: none; position: absolute; top: 24px; right: 0; background-color: #1a1a1a; min-width: 110px; z-index: 10000; box-shadow: 0 4px 15px rgba(0,0,0,0.8); overflow: hidden; border-radius: 6px; }
 #custom-dropdown-menu { border: 2px solid #9333ea; }
 #audio-dropdown-menu { border: 2px solid #71d000; top: 26px; right: -2px; min-width: 120px; z-index: 10001; }
 
-.dropdown-option, .audio-option {
-    padding: 8px 10px; color: #ffffff; font-size: 11px; cursor: pointer;
-    border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; white-space: nowrap;
-    font-family: Arial, sans-serif;
-}
+.dropdown-option, .audio-option { padding: 8px 10px; color: #ffffff; font-size: 11px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; white-space: nowrap; font-family: Arial, sans-serif; }
 .dropdown-option:hover, .audio-option:hover { background-color: #333; }
 .dropdown-option:last-child, .audio-option:last-child { border-bottom: none; }
 .dropdown-header { background-color: #1a1a1a; font-weight: bold; cursor: default; border-bottom: 2px solid #9333ea; justify-content: center; }
