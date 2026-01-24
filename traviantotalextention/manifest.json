@@ -7,7 +7,8 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.travian.com/village/statistics*" 
+        "*://*.travian.com/village/statistics/resources/production*",
+        "*://*.travian.com/village/statistics/resources/resources*"
       ],
       "js": ["content.js"],
       "run_at": "document_end"
