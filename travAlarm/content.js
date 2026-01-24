@@ -1,6 +1,6 @@
 /**
  * TRAVIAN WATCHMAN PRO - CONTENT SCRIPT
- * Version: 3.37 (Fixed & Complete)
+ * Version: 3.41 (Updated: Individual Attack Alarms)
  */
 
 // ==========================================
@@ -230,40 +230,62 @@ function scanSidebarAttacks() {
     const listEntries = document.querySelectorAll('.villageList .listEntry');
     if (!listEntries || listEntries.length === 0) return [];
 
-    const attackedVillages = [];
+    const currentDetectedNames = new Set();
+    const foundNewAttacks = [];
+
+    // 1. Identify all currently attacked villages individually
     listEntries.forEach(entry => {
         if (entry.classList.contains('attack')) {
             const nameNode = entry.querySelector('.name');
-            if (nameNode) attackedVillages.push(cleanText(nameNode.innerText));
+            if (nameNode) {
+                const vName = cleanText(nameNode.innerText);
+                // Create a unique name for EACH village under attack
+                const distinctName = `⚠️ ATTACK: ${vName} ${serverTag}`;
+                currentDetectedNames.add(distinctName);
+            }
         }
     });
 
-    if (attackedVillages.length > 0) {
-        noAttackConsecutiveScans = 0;
-        const namesStr = attackedVillages.join(', ');
-        const alarmName = `⚠️ ATTACK: ${namesStr} ${serverTag}`;
+    // 2. Synchronization: Remove alarms for villages that are NO LONGER under attack
+    currentAlarms.forEach(a => {
+        if (a.customType === 'attack' && a.name.includes(serverTag)) {
+            // If the alarm exists but is NOT in the current sidebar list, the attack has stopped/landed.
+            if (!currentDetectedNames.has(a.name)) {
+                // We send 'autoClear: true' so the background script knows NOT to permanently ignore this village name
+                browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name, autoClear: true });
+            }
+        }
+    });
 
-        currentAlarms.forEach(a => {
-            if (a.name.startsWith('⚠️ ATTACK:') && a.name !== alarmName && a.name.includes(serverTag)) {
-                browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name });
+    // 3. Register NEW attacks
+    if (currentDetectedNames.size > 0) {
+        noAttackConsecutiveScans = 0;
+
+        currentDetectedNames.forEach(attackName => {
+            const alreadyExists = currentAlarms.some(a => a.name === attackName);
+            const isSuppressed = suppressedAttacks.has(attackName);
+
+            if (!alreadyExists && !isSuppressed) {
+                foundNewAttacks.push({ 
+                    name: attackName, 
+                    delay: 1000, 
+                    customType: 'attack' 
+                });
             }
         });
-
-        if (suppressedAttacks.has(alarmName)) return []; 
-        const exists = currentAlarms.some(a => a.name === alarmName);
-        if (!exists) return [{ name: alarmName, delay: 1000, customType: 'attack' }];
     } else {
         noAttackConsecutiveScans++;
+        // If we really saw 0 attacks for 20 scans, allow a full cleanup just in case
         if (noAttackConsecutiveScans === 20) {
-            currentAlarms.forEach(a => {
-                if ((a.name.startsWith('⚠️ ATTACK:') || a.name.startsWith('⚠️ INCOMING ATTACKS!')) && a.name.includes(serverTag)) {
-                    browser.runtime.sendMessage({ type: "ATTACK_CLEARED", name: a.name });
-                    browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name });
+             currentAlarms.forEach(a => {
+                if (a.name.startsWith('⚠️ ATTACK:') && a.name.includes(serverTag)) {
+                    browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name, autoClear: true });
                 }
             });
         }
     }
-    return [];
+
+    return foundNewAttacks;
 }
 
 function scanVillages() {

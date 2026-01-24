@@ -156,6 +156,8 @@
     white-space: nowrap;
     top: 0px;    
     left: 0px;   
+	margin-left: 1px;
+	margin-right: 1px;
 }
 
 /* Reveal Pin on LEFT Zone Hover */
@@ -163,7 +165,7 @@
 .watchman-pin:hover {
     width: auto; 
     opacity: 0.3; 
-    margin-right: -2px;
+    margin-right: -1px;
 }
 
 .pin-hover-zone:hover ~ .watchman-pin.active-pin,
@@ -181,7 +183,7 @@
 .is-pinned-row {
     background: linear-gradient(90deg, rgba(113, 208, 0, 0.08) 0%, transparent 100%);
     border-left: 2px solid #71d000;
-    margin-left: -4px !important;
+    margin-left: -3px !important;
     margin-top: 2px;
 }
 
@@ -200,7 +202,7 @@
 .name-container { 
     flex: 1; 
     margin-right: 6px; 
-    padding-left: 5px; 
+    padding-left: 0px; 
     word-break: break-word; 
     overflow: visible; 
     margin-top: 0px;  

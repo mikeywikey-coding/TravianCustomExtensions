@@ -1,6 +1,6 @@
 /**
  * TRAVIAN WATCHMAN PRO - BACKGROUND SCRIPT
- * Version: 3.30
+ * Version: 3.41
  */
 
 let alarms = [];
@@ -146,9 +146,17 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         case "DELETE_ALARM":
             const target = alarms.find(a => a.id === msg.id || a.name === msg.name);
-            if (target && target.customType === 'attack') ignoredAttacks.add(target.name);
+            
+            // --- AUTO-CLEAR LOGIC ---
+            // If the user manually clicks "Delete", we ignore future attacks on this village (standard suppression).
+            // If the script sends 'autoClear: true' (because the attack ended naturally), we DO NOT suppress it.
+            if (target && target.customType === 'attack' && !msg.autoClear) {
+                ignoredAttacks.add(target.name);
+            }
+
             if (msg.id) alarms = alarms.filter(a => a.id !== msg.id);
             else if (msg.name) alarms = alarms.filter(a => a.name !== msg.name);
+            
             saveState();
             if (!alarms.some(a => a.notified && !a.silenced)) stopAlarmSound();
             break;
