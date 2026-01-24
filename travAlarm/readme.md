@@ -56,4 +56,4 @@ Privacy: All data is stored locally in your browser (storage.local). No data eve
 
 Disclaimer: This extension complies with the game's TOS, so no worries.
 
-<img width="289" height="521" alt="image" src="https://github.com/user-attachments/assets/f5376195-e14d-47b6-8d96-f311055cb0f9" />
+<img width="237" height="458" alt="image" src="https://github.com/user-attachments/assets/7f8ab08f-693e-408e-b4e1-bdc0a242f873" />
