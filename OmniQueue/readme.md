@@ -1,0 +1,3 @@
+This has the ability to track virtually anything you want, building queue, hero, troops, when you have enough resources to build something, incoming attacks etc...
+
+<img width="241" height="440" alt="image" src="https://github.com/user-attachments/assets/e758423a-cfbf-4688-81ef-1b9dd12a2641" />
