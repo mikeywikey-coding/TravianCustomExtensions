@@ -1,6 +1,6 @@
 /**
  * TRAVIAN WATCHMAN PRO - CONTENT SCRIPT
- * Version: 3.41 (Updated: Individual Attack Alarms)
+ * Version: 3.46 (Updated: "Crop full in" Prefill Logic)
  */
 
 // ==========================================
@@ -48,6 +48,45 @@ const DEFAULT_SHORTCUTS = [
 
 const cleanText = (str) => str.replace(/\s+/g, ' ').trim();
 const cleanCoords = (str) => str.replace(/[^\d|−-]/g, '').replace('−', '-');
+const cleanNumber = (str) => parseInt(str.replace(/[^\d-]/g, ''), 10);
+
+// ==========================================
+// HOVER LISTENER FOR CROP TOOLTIP
+// ==========================================
+document.body.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('#l4') || e.target.closest('.stockBar .crop'); 
+    
+    if (target) {
+        setTimeout(() => {
+            const tooltip = document.getElementById('travian_tooltip') || document.querySelector('.tip-contents');
+            if (!tooltip) return;
+
+            const text = tooltip.innerText;
+            const match = text.match(/Full in:\s*(\d+):(\d+):(\d+)/i);
+            
+            if (match) {
+                const h = parseInt(match[1], 10);
+                const m = parseInt(match[2], 10);
+                const s = parseInt(match[3], 10);
+                const ms = (h * 3600000) + (m * 60000) + (s * 1000);
+                
+                if (ms > 0 && ms < 7200000) { // < 2 Hours for Auto-Hover
+                    const vName = getActiveVillageName();
+                    const alarmName = `🌾 Granary Full | ${vName} ${serverTag}`;
+                    
+                    browser.runtime.sendMessage({ 
+                        type: "REFRESH_ALARMS", 
+                        buildings: [{ 
+                            name: alarmName, 
+                            delay: ms, 
+                            customType: 'resource' 
+                        }] 
+                    }).then(() => syncState(true));
+                }
+            }
+        }, 150);
+    }
+});
 
 // ==========================================
 // HELPERS
@@ -79,6 +118,7 @@ function formatDurationForPrompt(ms) {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// UPDATED: Reworked to prefill "Crop full in" on Overview
 function generateSmartBuildingName() {
     const possibleHeaders = [
         document.querySelector('.windowTitle'),
@@ -88,7 +128,16 @@ function generateSmartBuildingName() {
     ];
     const headerNode = possibleHeaders.find(el => el && el.innerText.trim().length > 0);
     let rawName = headerNode ? headerNode.innerText.trim() : "";
+    
+    // Clean up typical header text
+    rawName = rawName.replace(/[\t\n]/g, '').trim();
+
     if (!rawName) return "Reinforcements in";
+
+    // NEW LOGIC: Check for "Overview" (e.g. "Village overview")
+    if (rawName.toLowerCase().includes('overview')) {
+        return "Crop full in";
+    }
 
     const match = rawName.match(/^(.*?)\s(?:Level|Lvl|level)\s*(\d+)$/i);
     if (match) {
@@ -96,6 +145,7 @@ function generateSmartBuildingName() {
         const currentLevel = parseInt(match[2], 10);
         return `Queue ${namePart} Level ${currentLevel + 1}`;
     }
+    
     return `Queue ${rawName}`;
 }
 
@@ -210,6 +260,12 @@ function scan() {
             if (heroStatuses && heroStatuses.length > 0) found.push(...heroStatuses); 
         } catch (e) { console.error("Hero Scan Error:", e); }
 
+        // KEEP ALIVE SCAN (Passive, ignores if > 2h)
+        try {
+            const cropStatus = scanResources(activeVillage, false);
+            if (cropStatus.length > 0) found.push(...cropStatus);
+        } catch (e) { console.error("Resource Scan Error:", e); }
+
         try {
             const attacks = scanAttacks(activeVillage);
             if (attacks.length > 0) found.push(...attacks);
@@ -226,6 +282,49 @@ function scan() {
     } catch (err) { console.error("Watchman Main Loop Error:", err); }
 }
 
+function scanResources(activeVillage, ignoreThreshold = false) {
+    if (!window.location.pathname.includes('dorf1.php')) return [];
+    
+    const cropNode = document.getElementById('l4');
+    const granaryNode = document.getElementById('stockBarGranary') || document.querySelector('.stockBar .granary');
+    const prodTable = document.getElementById('production');
+    
+    if (!cropNode || !granaryNode || !prodTable) return [];
+
+    const currentCrop = cleanNumber(cropNode.innerText);
+    let capacity = 0;
+    const capNode = granaryNode.querySelector('.capacity') || granaryNode.querySelector('.value') || document.querySelector('#stockBar .granary .capacity');
+    if (capNode) capacity = cleanNumber(capNode.innerText);
+    else capacity = cleanNumber(granaryNode.innerText);
+
+    const prodRows = prodTable.querySelectorAll('tbody tr');
+    if (prodRows.length < 4) return [];
+    const cropRow = prodRows[prodRows.length - 1]; 
+    const prodNumNode = cropRow.querySelector('.num');
+    if (!prodNumNode) return [];
+
+    let prodText = cleanText(prodNumNode.innerText).replace('−', '-');
+    const productionPerHour = parseInt(prodText, 10);
+
+    if (isNaN(currentCrop) || isNaN(capacity) || isNaN(productionPerHour)) return [];
+    if (productionPerHour <= 0) return []; 
+    if (currentCrop >= capacity) return []; 
+
+    const missingCrop = capacity - currentCrop;
+    const hoursToFill = missingCrop / productionPerHour;
+    const msToFill = Math.floor(hoursToFill * 3600 * 1000);
+
+    const alarmName = `🌾 Granary Full | ${activeVillage} ${serverTag}`;
+
+    // If ignoreThreshold is TRUE (Context Menu), allow up to 48h
+    // If ignoreThreshold is FALSE (Auto Scan), stricter 2h limit to avoid clutter
+    const limit = ignoreThreshold ? 172800000 : 7200000;
+
+    if (msToFill > limit) return [];
+
+    return [{ name: alarmName, delay: msToFill, customType: 'resource' }];
+}
+
 function scanSidebarAttacks() {
     const listEntries = document.querySelectorAll('.villageList .listEntry');
     if (!listEntries || listEntries.length === 0) return [];
@@ -233,49 +332,36 @@ function scanSidebarAttacks() {
     const currentDetectedNames = new Set();
     const foundNewAttacks = [];
 
-    // 1. Identify all currently attacked villages individually
     listEntries.forEach(entry => {
         if (entry.classList.contains('attack')) {
             const nameNode = entry.querySelector('.name');
             if (nameNode) {
                 const vName = cleanText(nameNode.innerText);
-                // Create a unique name for EACH village under attack
                 const distinctName = `⚠️ ATTACK: ${vName} ${serverTag}`;
                 currentDetectedNames.add(distinctName);
             }
         }
     });
 
-    // 2. Synchronization: Remove alarms for villages that are NO LONGER under attack
     currentAlarms.forEach(a => {
         if (a.customType === 'attack' && a.name.includes(serverTag)) {
-            // If the alarm exists but is NOT in the current sidebar list, the attack has stopped/landed.
             if (!currentDetectedNames.has(a.name)) {
-                // We send 'autoClear: true' so the background script knows NOT to permanently ignore this village name
                 browser.runtime.sendMessage({ type: "DELETE_ALARM", id: a.id, name: a.name, autoClear: true });
             }
         }
     });
 
-    // 3. Register NEW attacks
     if (currentDetectedNames.size > 0) {
         noAttackConsecutiveScans = 0;
-
         currentDetectedNames.forEach(attackName => {
             const alreadyExists = currentAlarms.some(a => a.name === attackName);
             const isSuppressed = suppressedAttacks.has(attackName);
-
             if (!alreadyExists && !isSuppressed) {
-                foundNewAttacks.push({ 
-                    name: attackName, 
-                    delay: 1000, 
-                    customType: 'attack' 
-                });
+                foundNewAttacks.push({ name: attackName, delay: 1000, customType: 'attack' });
             }
         });
     } else {
         noAttackConsecutiveScans++;
-        // If we really saw 0 attacks for 20 scans, allow a full cleanup just in case
         if (noAttackConsecutiveScans === 20) {
              currentAlarms.forEach(a => {
                 if (a.name.startsWith('⚠️ ATTACK:') && a.name.includes(serverTag)) {
@@ -379,7 +465,7 @@ function scanBuildings(activeVillage) {
 function handleQueueCleanup(matchedIds, activeVillage) {
     const now = Date.now();
     currentAlarms.forEach(a => {
-        if (a.name.includes('⚠️') || a.name.includes('⚔️') || a.name.includes('⭐')) return;
+        if (a.name.includes('⚠️') || a.name.includes('⚔️') || a.name.includes('⭐') || a.name.includes('🌾')) return;
         const vTag = `(${activeVillage})`;
         if (!a.name.includes(vTag) || !a.name.includes(serverTag)) return;
         if (matchedIds.has(a.id || a.name)) return;
@@ -425,7 +511,6 @@ function scanHero(activeVillage, villageMap) {
         else if (rawStatusLower.includes("reinforce")) { actionLabel = "Reinforcing"; targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName); }
         else { actionLabel = "Returning to"; targetName = matchedVillageName || (coordMatch ? coordMatch[0] : originName); }
 
-        // --- WRAPPED ICON FOR CSS POSITIONING ---
         const heroName = `<span class="hero-icon">⚔️</span> ${cleanText(`${actionLabel} | ${targetName}`)} ${serverTag}`;
         
         const serverHeroExists = currentAlarms.some(a => a.name.includes(actionLabel) && a.name.includes(serverTag) && Math.abs(a.scheduledTime - scheduledTime) < 30000);
@@ -507,7 +592,6 @@ function scanAttacks(activeVillage) {
 async function syncState(force = false) {
     if (!force && document.querySelector('.inline-editor')) return;
     
-    // 1. Get Alarms & Sound Mode
     const res = await browser.runtime.sendMessage({ type: "GET_ACTIVE_ALARMS" });
     if (!res) return;
 
@@ -516,7 +600,6 @@ async function syncState(force = false) {
     currentAlarms = alarms;
     localTracked = new Set(currentAlarms.map(a => a.name.replace(/\s#\d+$/, '')));
 
-    // 2. FAIL-SAFE ICON UPDATE
     const btn = document.getElementById('audio-trigger-btn');
     if (btn) {
         const mode = res.soundMode || 'all';
@@ -533,9 +616,8 @@ async function syncState(force = false) {
         }
     }
 
-    // 3. Sort & Rebuild List (PRIORITIZES PINNED ITEMS)
     currentAlarms.sort((a, b) => {
-        if (!!a.isPinned !== !!b.isPinned) return a.isPinned ? -1 : 1; // Pinned first
+        if (!!a.isPinned !== !!b.isPinned) return a.isPinned ? -1 : 1; 
 
         const aDone = (a.scheduledTime - now) <= 0;
         const bDone = (b.scheduledTime - now) <= 0;
@@ -611,6 +693,7 @@ function createAlarmNode(a, uniqueId) {
     if (isCustom) extraClass = (a.customType === 'manual') ? "baby-pink" : "lean-purple";
     else if (a.name.includes('⚔️')) extraClass = "hero-gold";
     else if (a.name.includes('⚠️')) extraClass = "res-alert";
+    else if (a.name.includes('🌾')) extraClass = "grain-green"; 
     
     const pinnedClass = a.isPinned ? "is-pinned-row" : "";
     const pinActive = a.isPinned ? "active-pin" : "";
@@ -641,7 +724,6 @@ function createAlarmNode(a, uniqueId) {
 }
 
 function setupAlarmListeners(node, a, uniqueId) {
-    // Pin Listener
     const pinBtn = node.querySelector('.watchman-pin');
     if (pinBtn) {
         pinBtn.onclick = (e) => {
@@ -695,7 +777,6 @@ function setupAlarmListeners(node, a, uniqueId) {
         };
     }
     
-    // Consolidated Click Logic
     const handleTriggerClick = () => {
         if (node.querySelector('.inline-editor')) return;
         const now = Date.now();
@@ -720,7 +801,6 @@ function setupAlarmListeners(node, a, uniqueId) {
     const leftZone = node.querySelector('.pin-hover-zone');
     if (leftZone) leftZone.onclick = handleTriggerClick;
     
-    // New Right Zone Click Handler
     const rightZone = node.querySelector('.right-hover-zone');
     if (rightZone) rightZone.onclick = handleTriggerClick;
 
@@ -752,7 +832,7 @@ function tick() {
                     ref.nameNode.classList.remove('flashing-alarm'); 
                 }
             } else { 
-                ref.nameNode.classList.remove('hero-gold', 'baby-pink', 'lean-purple', 'res-alert');
+                ref.nameNode.classList.remove('hero-gold', 'baby-pink', 'lean-purple', 'res-alert', 'grain-green');
                 if (ref.timeNode.style.color !== "rgb(255, 68, 68)") {
                     ref.timeNode.style.color = "#ff4444"; 
                     ref.timeNode.classList.add('flashing-alarm'); 
@@ -845,9 +925,28 @@ async function deleteShortcut(label) {
     loadShortcuts();
 }
 
+// UPDATED CONTEXT MENU LISTENER
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === "OPEN_CONTEXT_ADD") {
-        let prefilled = generateSmartBuildingName().replace(/,/g, '').replace(/\s+/g, ' ').trim();
+        // NEW: Check for Village Overview Header ("Village overview" or similar localized text in dorf1.php)
+        let prefilled = generateSmartBuildingName();
+        
+        // If "Crop full in" is detected (via header check), or explicitly on dorf1.php
+        if (prefilled === "Crop full in" || window.location.pathname.includes('dorf1.php')) {
+             // Pass 'true' to ignore the < 2h threshold for manual triggers
+             const cropAlarms = scanResources(getActiveVillageName(), true);
+             
+             if (cropAlarms && cropAlarms.length > 0) {
+                 browser.runtime.sendMessage({ 
+                     type: "REFRESH_ALARMS", 
+                     buildings: cropAlarms 
+                 }).then(() => syncState(true));
+                 return; // Skip the prompt
+             }
+        }
+
+        // Fallback to Manual Prompt
+        prefilled = prefilled.replace(/,/g, '').replace(/\s+/g, ' ').trim();
         setTimeout(() => {
             const name = prompt("Enter Alarm Name:", prefilled);
             if (!name) return;
