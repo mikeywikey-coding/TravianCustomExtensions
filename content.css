@@ -1,0 +1,298 @@
+/* =========================================
+   TRAVIAN WATCHMAN PRO - CONTENT STYLES
+   Version: 3.39 (Fixed: Zone Detection Z-Index)
+   ========================================= */
+
+/* -----------------------------------------
+   ANIMATIONS & ALARMS
+   ----------------------------------------- */
+@keyframes watchman-flash-red {
+    0% { color: #ff0000; text-shadow: 0 0 8px rgba(255, 0, 0, 0.8); }
+    50% { color: #b91c1c; text-shadow: none; }
+    100% { color: #ff0000; text-shadow: 0 0 8px rgba(255, 0, 0, 0.8); }
+}
+
+.flashing-alarm { 
+    animation: watchman-flash-red 0.8s infinite; 
+    font-weight: 900 !important; 
+}
+
+.flashing-alarm span {
+    color: #9ca3af !important;
+    text-shadow: none !important;
+}
+
+/* -----------------------------------------
+   WIDGET CONTAINER
+   ----------------------------------------- */
+#travian-timer-widget {
+    position: fixed; 
+    right: 13px; 
+    top: 148px;
+    width: 210px; 
+    z-index: 9999;
+    background-color: transparent; 
+    border-radius: 8px; 
+    border: 1px solid #4a4a4a;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.8); 
+    font-family: Arial, sans-serif;
+    backdrop-filter: blur(8px);
+    pointer-events: auto;
+    transition: width 0.2s ease;
+}
+
+.is-minimized { width: 160px !important; }
+.is-minimized #timer-list { display: none !important; }
+
+/* -----------------------------------------
+   HEADER & CONTROLS
+   ----------------------------------------- */
+.header-controls { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    width: 100%; 
+}
+
+.add-btn, #dropdown-trigger-btn { 
+    height: 20px !important; 
+    box-sizing: border-box; 
+    border-radius: 4px !important;
+    border: 2px solid transparent !important; 
+    cursor: pointer; 
+    display: flex;
+    align-items: center; 
+    justify-content: center; 
+    transition: box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+#minimize-btn { background: #444 !important; color: white !important; width: 24px !important; border-color: #555 !important; }
+
+#clear-all { 
+    background: #e11d48 !important; color: white !important; width: 24px !important; 
+    border-color: #e11d48 !important; box-shadow: 0 0 5px 1px rgba(225, 29, 72, 0.7) !important; 
+    position: relative; left: 3px;
+}
+#clear-all:hover { box-shadow: 0 0 8px 2px rgba(225, 29, 72, 0.9) !important; filter: brightness(1.1); }
+
+#toggle-input { 
+    background: #71d000 !important; color: #000 !important; width: 24px !important; 
+    font-weight: bold !important; font-size: 14px !important; 
+    border-color: #71d000 !important; box-shadow: 0 0 5px 1px rgba(113, 208, 0, 0.7) !important; 
+    position: relative; left: 3px;
+}
+#toggle-input:hover { box-shadow: 0 0 8px 2px rgba(113, 208, 0, 0.9) !important; filter: brightness(1.1); }
+
+/* -----------------------------------------
+   LIST & ITEMS
+   ----------------------------------------- */
+#timer-list { 
+    padding: 0 10px; 
+    font-size: 11px; color: #ccc; 
+    max-height: 420px; overflow-y: scroll; 
+    background: rgba(30, 30, 30, 0.9); border-radius: 0 0 8px 8px;
+    -ms-overflow-style: none !important; scrollbar-width: none !important; 
+}
+#timer-list::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+
+.alarm-item { 
+    contain: content; 
+    margin: 5px 0; 
+    border-bottom: 1px solid rgba(255,255,255,0.08); 
+    padding: 5px 0; 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden; 
+}
+
+/* -----------------------------------------
+   ROW LAYOUT & ZONES
+   ----------------------------------------- */
+.row-wrapper { 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    width: 100%; 
+    position: relative; 
+}
+
+/* LEFT HOVER ZONE (25%) */
+/* Z-Index increased to 16 to sit above the Trigger Text (15) */
+.pin-hover-zone {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 25%; 
+    z-index: 16; 
+    cursor: pointer; 
+}
+
+/* RIGHT HOVER ZONE (25%) */
+/* Z-Index increased to 16 to sit above the Trigger Text (15) */
+.right-hover-zone {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 25%; 
+    z-index: 16; 
+    cursor: pointer; 
+}
+
+/* PIN BUTTON (Left Side) */
+/* Z-Index 20 keeps it clickable above the zone */
+.watchman-pin {
+    font-size: 13px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    z-index: 20; 
+    width: 0;
+    opacity: 0;
+    margin: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    top: 0px;    
+    left: 0px;   
+	margin-left: 1px;
+	margin-right: 1px;
+}
+
+/* Reveal Pin on LEFT Zone Hover */
+.pin-hover-zone:hover ~ .watchman-pin,
+.watchman-pin:hover {
+    width: auto; 
+    opacity: 0.3; 
+    margin-right: -1px;
+}
+
+.pin-hover-zone:hover ~ .watchman-pin.active-pin,
+.watchman-pin:hover.active-pin {
+    opacity: 1 !important; 
+    color: #71d000; 
+    text-shadow: 0 0 5px rgba(113, 208, 0, 0.4);
+}
+
+.watchman-pin:hover { 
+    opacity: 1 !important; 
+    transform: scale(1.1); 
+}
+
+.is-pinned-row {
+    background: linear-gradient(90deg, rgba(113, 208, 0, 0.08) 0%, transparent 100%);
+    border-left: 2px solid #71d000;
+    margin-left: -3px !important;
+    margin-top: 2px;
+}
+
+/* TRIGGER AREA */
+.trigger { 
+    display: flex; 
+    flex: 1; 
+    min-width: 0; 
+    justify-content: space-between; 
+    align-items: center; 
+    cursor: pointer; 
+    position: relative;
+    z-index: 15; 
+}
+
+.name-container { 
+    flex: 1; 
+    margin-right: 6px; 
+    padding-left: 0px; 
+    word-break: break-word; 
+    overflow: visible; 
+    margin-top: 0px;  
+}
+
+.hero-icon { position: relative; top: 1px; left: 0px; margin-right: 4px; display: inline-block; }
+.n { display: block; white-space: normal; line-height: 1.2; transition: all 0.3s ease; position: relative; top: 0px; left: 0px; padding-left: 2px; }
+
+.t { 
+    color: #71d000; font-weight: bold; font-size: 13px; font-family: monospace; 
+    flex-shrink: 0; margin-top: -1px; white-space: nowrap; margin-right: -5px;
+}
+
+/* -----------------------------------------
+   RIGHT SIDE ACTIONS
+   ----------------------------------------- */
+.action-group {
+    display: flex;
+    align-items: center;
+    margin-left: 5px;
+    flex-shrink: 0;
+    position: relative;
+    /* Z-Index 30 ensures buttons are clickable above Right Zone (16) */
+    z-index: 30; 
+}
+
+.watchman-del { 
+    transition: all 0.1s ease-in-out; opacity: 0.4; cursor: pointer; 
+    font-size: 14px; padding-left: 3px; 
+}
+.watchman-del:hover { opacity: 1 !important; transform: scale(1.2); filter: brightness(1.5); }
+
+/* EDIT BUTTON */
+.watchman-edit { 
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer; font-size: 14px; color: #fff;
+    width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
+}
+
+/* REVEAL EDIT BUTTON - ONLY ON RIGHT ZONE HOVER */
+.right-hover-zone:hover ~ .action-group .watchman-edit,
+.action-group:hover .watchman-edit {
+    width: auto; 
+    opacity: 0.25; 
+    margin-left: 8px; 
+    pointer-events: auto; 
+    margin-right: 1px; 
+}
+
+.watchman-edit:hover { opacity: 1 !important; transform: scale(1.3); color: #4ade80; }
+
+.danger-icon { font-size: 13px; vertical-align: middle; margin-right: 0.7px; position: relative; bottom: 3.61px; }
+
+/* -----------------------------------------
+   DROPDOWNS
+   ----------------------------------------- */
+#custom-dropdown-container, #audio-dropdown-container { 
+    position: relative; display: inline-block; vertical-align: middle; 
+}
+#custom-dropdown-container { left: 3px; }
+#audio-dropdown-container { margin-left: 5px; left: -2px; }
+
+#dropdown-trigger-btn { width: 32px; background-color: #9333ea !important; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='yellow'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>"); background-repeat: no-repeat; background-position: center; background-size: 14px; border-color: #9333ea !important; box-shadow: 0 0 5px 1px rgba(147, 51, 234, 0.8) !important; }
+#dropdown-trigger-btn:hover { box-shadow: 0 0 8px 2px rgba(147, 51, 234, 1) !important; filter: brightness(1.1); }
+
+#audio-trigger-btn { cursor: pointer; font-size: 16px; width: 24px; text-align: center; transition: transform 0.2s; user-select: none; }
+#audio-trigger-btn:hover { transform: scale(1.1); }
+
+#custom-dropdown-menu, #audio-dropdown-menu { display: none; position: absolute; top: 24px; right: 0; background-color: #1a1a1a; min-width: 110px; z-index: 10000; box-shadow: 0 4px 15px rgba(0,0,0,0.8); overflow: hidden; border-radius: 6px; }
+#custom-dropdown-menu { border: 2px solid #9333ea; }
+#audio-dropdown-menu { border: 2px solid #71d000; top: 26px; right: -2px; min-width: 120px; z-index: 10001; }
+
+.dropdown-option, .audio-option { padding: 8px 10px; color: #ffffff; font-size: 11px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; white-space: nowrap; font-family: Arial, sans-serif; }
+.dropdown-option:hover, .audio-option:hover { background-color: #333; }
+.dropdown-option:last-child, .audio-option:last-child { border-bottom: none; }
+.dropdown-header { background-color: #1a1a1a; font-weight: bold; cursor: default; border-bottom: 2px solid #9333ea; justify-content: center; }
+.new-btn { color: #71d000; font-weight: bold; justify-content: center; }
+.audio-option.is-active-mode { color: #71d000; font-weight: bold; background-color: rgba(113, 208, 0, 0.1); }
+
+.shortcut-actions { display: flex; align-items: center; margin-left: auto; }
+.remove-shortcut, .edit-shortcut, .recurring-toggle { opacity: 0.5; transition: opacity 0.2s, transform 0.2s; margin-left: 5px; }
+.remove-shortcut:hover, .edit-shortcut:hover, .recurring-toggle:hover { opacity: 1; transform: scale(1.2); }
+.remove-shortcut { color: #ef4444; }
+.edit-shortcut { color: #fff; }
+.recurring-toggle.is-active { opacity: 1 !important; color: #71d000 !important; text-shadow: 0 0 5px rgba(113, 208, 0, 0.6); }
+
+/* -----------------------------------------
+   COLOR CLASSES
+   ----------------------------------------- */
+.lean-purple { color: #a855f7 !important; }
+.baby-pink { color: #fa86c4 !important; text-shadow: 0 0 5px rgba(250, 134, 196, 0.4); } 
+.res-alert { color: #46f1fa !important; text-shadow: 0 0 4px rgba(252, 167, 48, 0.4); }
+.hero-gold { color: #ffcc00 !important; text-shadow: 0 0 4px rgba(252, 167, 48, 0.4); }
